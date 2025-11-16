@@ -1,20 +1,22 @@
 import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
-import { Bike, ToggleLeft, ToggleRight, Package, DollarSign } from 'lucide-react';
+import { Bike, Package, DollarSign, MapPin, Clock, User, Star, TrendingUp } from 'lucide-react';
 import { 
   useRider, 
-  useRegisterRider, 
-  useSetRiderAvailability 
+  useRegisterRider
 } from '../hooks/useRiders';
 import { useOrderCount, useOrder } from '../hooks/useOrders';
-import { useMarkPickedUp, useMarkDelivered } from '../hooks/useOrders';
-import { createRiderMetadata } from '../utils/ipfs';
+import { useMarkPickedUp, useMarkDelivered, useAssignRider } from '../hooks/useOrders';
+import { useRestaurant } from '../hooks/useRestaurants';
+import { createRiderMetadata, fetchFromIPFS } from '../utils/ipfs';
 import { getOrderStatusName } from '../contracts/abis';
 import { NETWORK_CONFIG } from '../contracts/addresses';
+import { formatEther } from 'viem';
+import { getTimeAgo } from '../utils/formatDate';
 
 function RiderDashboard({ onBack }) {
   const { address } = useAccount();
-  const { rider, refetch: refetchRider } = useRider(address);
+  const { rider, isLoading, refetch: refetchRider } = useRider(address);
 
   if (!address) {
     return (
@@ -24,21 +26,40 @@ function RiderDashboard({ onBack }) {
     );
   }
 
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="text-center py-12">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
+        <p className="mt-4 text-gray-600">Loading rider profile...</p>
+      </div>
+    );
+  }
+
   // If not registered as rider, show registration form
   if (!rider || rider.riderAddress === '0x0000000000000000000000000000000000000000') {
     return <RegisterRiderForm onSuccess={() => refetchRider()} onBack={onBack} />;
   }
 
+  // Note: Riders are automatically available when registered
+  // If you're not on an active delivery, you can accept new orders
+
   return (
-    <div>
-      <h1 className="text-3xl font-bold mb-6">Rider Dashboard</h1>
+    <div className="animate-fadeIn">
+      <h1 className="text-3xl font-bold mb-6 bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+        🏍️ Rider Dashboard
+      </h1>
       
-      <div className="grid md:grid-cols-2 gap-6 mb-6">
+      <div className="grid md:grid-cols-3 gap-6 mb-6">
         <RiderInfo rider={rider} riderAddress={address} />
         <RiderStats rider={rider} />
+        <RiderEarnings rider={rider} />
       </div>
 
-      <AvailableDeliveries riderAddress={address} />
+      <div className="grid md:grid-cols-2 gap-6">
+        <AvailableOrders riderAddress={address} />
+        <MyActiveDeliveries riderAddress={address} />
+      </div>
     </div>
   );
 }
@@ -180,45 +201,41 @@ function RegisterRiderForm({ onSuccess, onBack }) {
 }
 
 function RiderInfo({ rider, riderAddress }) {
-  const { setAvailability, isPending } = useSetRiderAvailability();
-
-  const toggleAvailability = async () => {
-    await setAvailability(!rider.isAvailable);
-  };
+  const rating = rider.ratingCount > 0 
+    ? (Number(rider.totalRating) / Number(rider.ratingCount)).toFixed(1)
+    : '0.0';
 
   return (
-    <div className="card">
-      <h3 className="text-lg font-semibold mb-4">Rider Info</h3>
+    <div className="card border-2 border-green-100">
+      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <Bike className="w-5 h-5 text-green-600" />
+        Rider Profile
+      </h3>
       <div className="space-y-3 text-sm">
         <div>
-          <p className="text-gray-600">Address</p>
-          <p className="font-mono text-xs break-all">{riderAddress}</p>
+          <p className="text-gray-600">Name</p>
+          <p className="font-semibold">{rider.name || 'Unknown'}</p>
         </div>
         <div>
-          <p className="text-gray-600">Availability</p>
-          <button
-            onClick={toggleAvailability}
-            disabled={isPending}
-            className="flex items-center gap-2 mt-1"
-          >
-            {rider.isAvailable ? (
-              <>
-                <ToggleRight className="w-6 h-6 text-green-600" />
-                <span className="text-green-600 font-medium">Available</span>
-              </>
-            ) : (
-              <>
-                <ToggleLeft className="w-6 h-6 text-gray-400" />
-                <span className="text-gray-600 font-medium">Offline</span>
-              </>
-            )}
-          </button>
-        </div>
-        <div>
-          <p className="text-gray-600">Status</p>
-          <p className={`font-medium ${rider.isActive ? 'text-green-600' : 'text-red-600'}`}>
-            {rider.isActive ? 'Active' : 'Inactive'}
+          <p className="text-gray-600">Vehicle</p>
+          <p className="font-medium">
+            {rider.vehicleType === 'bike' && '🚲 Bike'}
+            {rider.vehicleType === 'scooter' && '🛵 Scooter'}
+            {rider.vehicleType === 'motorcycle' && '🏍️ Motorcycle'}
+            {rider.vehicleType === 'car' && '🚗 Car'}
           </p>
+        </div>
+        <div>
+          <p className="text-gray-600">Rating</p>
+          <div className="flex items-center gap-1">
+            <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+            <span className="font-semibold">{rating}</span>
+            <span className="text-gray-500">({Number(rider.ratingCount)} reviews)</span>
+          </div>
+        </div>
+        <div>
+          <p className="text-gray-600">Phone</p>
+          <p className="font-medium">{rider.phoneNumber || 'Not provided'}</p>
         </div>
       </div>
     </div>
@@ -226,24 +243,51 @@ function RiderInfo({ rider, riderAddress }) {
 }
 
 function RiderStats({ rider }) {
-  const totalEarnings = (Number(rider.totalEarnings) / 1e18).toFixed(4);
-
   return (
-    <div className="card">
-      <h3 className="text-lg font-semibold mb-4">Your Stats</h3>
-      <div className="grid grid-cols-2 gap-4">
+    <div className="card bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-100">
+      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <Package className="w-5 h-5 text-green-600" />
+        Deliveries
+      </h3>
+      <div className="space-y-3">
         <div>
-          <p className="text-gray-600 text-sm">Total Deliveries</p>
-          <p className="text-2xl font-bold flex items-center gap-1">
-            <Package className="w-5 h-5" />
+          <p className="text-gray-600 text-sm">Total Completed</p>
+          <p className="text-3xl font-bold text-green-600">
             {Number(rider.totalDeliveries)}
           </p>
         </div>
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <TrendingUp className="w-4 h-4" />
+          <span>Keep delivering to earn more!</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RiderEarnings({ rider }) {
+  const totalEarnings = (Number(rider.totalEarnings) / 1e18).toFixed(4);
+  const usdValue = (parseFloat(totalEarnings) * 3000).toFixed(2);
+
+  return (
+    <div className="card bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-100">
+      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <DollarSign className="w-5 h-5 text-green-600" />
+        Earnings
+      </h3>
+      <div className="space-y-2">
         <div>
-          <p className="text-gray-600 text-sm">Total Earnings</p>
-          <p className="text-2xl font-bold flex items-center gap-1">
-            <DollarSign className="w-5 h-5" />
+          <p className="text-gray-600 text-sm">Total Earned</p>
+          <p className="text-3xl font-bold text-green-600">
             {totalEarnings} ETH
+          </p>
+          <p className="text-sm text-gray-600">
+            ≈ ${usdValue} USD
+          </p>
+        </div>
+        <div className="bg-green-100 rounded-lg p-2 mt-3">
+          <p className="text-xs text-green-800 font-medium">
+            💰 You earn 10% of each order value
           </p>
         </div>
       </div>
@@ -251,34 +295,55 @@ function RiderStats({ rider }) {
   );
 }
 
-function AvailableDeliveries({ riderAddress }) {
+function AvailableOrders({ riderAddress }) {
   const { orderCount } = useOrderCount();
   const [availableOrders, setAvailableOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Find orders assigned to this rider
   useEffect(() => {
-    if (orderCount > 0) {
-      // In production, filter by rider address from events
-      const orders = [];
-      for (let i = 1; i <= Math.min(orderCount, 5); i++) {
-        orders.push(i);
+    const fetchAvailableOrders = async () => {
+      if (orderCount > 0) {
+        setLoading(true);
+        const orders = [];
+        for (let i = 1; i <= Number(orderCount); i++) {
+          orders.push(i);
+        }
+        setAvailableOrders(orders);
+        setLoading(false);
+      } else {
+        setLoading(false);
       }
-      setAvailableOrders(orders);
-    }
-  }, [orderCount, riderAddress]);
+    };
+
+    fetchAvailableOrders();
+  }, [orderCount]);
 
   return (
-    <div className="card">
-      <h3 className="text-lg font-semibold mb-4">Your Deliveries</h3>
+    <div className="card border-2 border-green-200">
+      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <Package className="w-5 h-5 text-green-600" />
+        📦 Available Orders
+      </h3>
 
-      {availableOrders.length === 0 ? (
-        <p className="text-gray-600 text-center py-8">
-          No active deliveries. Make sure you're available to receive orders!
-        </p>
+      {loading ? (
+        <div className="text-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto"></div>
+          <p className="mt-3 text-gray-600 text-sm">Loading available orders...</p>
+        </div>
+      ) : availableOrders.length === 0 ? (
+        <div className="text-center py-12">
+          <Package className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+          <p className="text-gray-600">No orders available right now</p>
+          <p className="text-sm text-gray-500 mt-1">Check back soon for new deliveries!</p>
+        </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3 max-h-[600px] overflow-y-auto">
           {availableOrders.map(orderId => (
-            <RiderOrderCard key={orderId} orderId={orderId} riderAddress={riderAddress} />
+            <AvailableOrderCard 
+              key={orderId} 
+              orderId={orderId} 
+              riderAddress={riderAddress}
+            />
           ))}
         </div>
       )}
@@ -286,67 +351,360 @@ function AvailableDeliveries({ riderAddress }) {
   );
 }
 
-function RiderOrderCard({ orderId, riderAddress }) {
+function MyActiveDeliveries({ riderAddress }) {
+  const { orderCount } = useOrderCount();
+  const [myOrders, setMyOrders] = useState([]);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    if (orderCount > 0) {
+      const orders = [];
+      for (let i = 1; i <= Number(orderCount); i++) {
+        orders.push(i);
+      }
+      setMyOrders(orders);
+    }
+  }, [orderCount, refreshKey]);
+
+  // Refresh order list every 5 seconds to catch new assignments and status changes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRefreshKey(prev => prev + 1);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="card border-2 border-green-200">
+      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <Bike className="w-5 h-5 text-green-600" />
+        🏍️ My Active Deliveries
+      </h3>
+
+      {myOrders.length === 0 ? (
+        <div className="text-center py-12">
+          <Bike className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+          <p className="text-gray-600">No active deliveries</p>
+          <p className="text-sm text-gray-500 mt-1">Accept an order from "Available Orders" to start!</p>
+        </div>
+      ) : (
+        <div className="space-y-3 max-h-[600px] overflow-y-auto">
+          {myOrders.map(orderId => (
+            <MyDeliveryCard 
+              key={`${orderId}-${refreshKey}`}
+              orderId={orderId} 
+              riderAddress={riderAddress}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AvailableOrderCard({ orderId, riderAddress }) {
   const { order, refetch } = useOrder(orderId);
-  const { markPickedUp, isPending: isPickingUp } = useMarkPickedUp();
-  const { markDelivered, isPending: isDelivering } = useMarkDelivered();
+  const { restaurant } = useRestaurant(order?.restaurantId);
+  const { assignRider, isPending, isConfirming: isAssigningConfirming, isSuccess: isAssignedSuccess } = useAssignRider();
+  const [orderDetails, setOrderDetails] = useState(null);
+
+  useEffect(() => {
+    const fetchDetails = async () => {
+      if (order?.ipfsOrderHash) {
+        try {
+          const details = await fetchFromIPFS(order.ipfsOrderHash);
+          setOrderDetails(details);
+        } catch (error) {
+          console.error('Failed to fetch order details:', error);
+        }
+      }
+    };
+    fetchDetails();
+  }, [order]);
+
+  // Auto-refetch when assignment succeeds
+  useEffect(() => {
+    if (isAssignedSuccess) {
+      // Wait a moment for blockchain state to update, then refetch
+      const timeoutId = setTimeout(() => {
+        refetch();
+      }, 2000);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isAssignedSuccess, refetch]);
+
+  // Periodic refetch to catch any updates (every 5 seconds)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refetch();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [refetch]);
 
   if (!order) return null;
 
-  // Only show if rider is assigned to this order
-  const isMyOrder = order.rider?.toLowerCase() === riderAddress?.toLowerCase();
+  // Only show if: status = Prepared AND no rider assigned yet
+  const hasNoRider = !order.rider || order.rider === '0x0000000000000000000000000000000000000000';
+  if (order.status !== 2 || !hasNoRider) return null;
 
-  if (!isMyOrder && order.rider !== '0x0000000000000000000000000000000000000000') {
-    return null;
-  }
-
-  const handlePickup = async () => {
-    await markPickedUp(orderId);
-    setTimeout(() => refetch(), 2000);
+  const handleAccept = () => {
+    try {
+      assignRider(orderId, riderAddress);
+      // Refetch will happen automatically when isAssignedSuccess becomes true
+    } catch (error) {
+      console.error('Failed to accept order:', error);
+      alert('Failed to accept order. Please try again.');
+    }
   };
 
-  const handleDeliver = async () => {
-    await markDelivered(orderId);
-    setTimeout(() => refetch(), 2000);
-  };
-
-  const riderEarnings = (Number(order.amount) * 0.1 / 1e18).toFixed(4);
+  const amount = formatEther(order.amount);
+  const riderEarnings = (parseFloat(amount) * 0.1).toFixed(4);
 
   return (
-    <div className="border rounded-lg p-4">
+    <div className="border-2 border-green-200 rounded-lg p-4 hover:shadow-lg transition-shadow bg-white">
       <div className="flex justify-between items-start mb-3">
-        <div>
-          <p className="font-semibold">Order #{orderId}</p>
-          <p className="text-sm text-gray-600">
-            {getOrderStatusName(order.status)}
-          </p>
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <h4 className="font-bold text-lg">Order #{orderId}</h4>
+            <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-bold rounded-full">
+              🍳 Ready for Pickup
+            </span>
+          </div>
+          <div className="space-y-1 text-sm text-gray-600">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              <span>{getTimeAgo(order.createdAt)}</span>
+            </div>
+            {restaurant && (
+              <div className="flex items-center gap-2">
+                <Package className="w-4 h-4" />
+                <span className="font-medium">{restaurant.name}</span>
+              </div>
+            )}
+            {order.deliveryAddress && (
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4" />
+                <span>{order.deliveryAddress}</span>
+              </div>
+            )}
+          </div>
         </div>
         <div className="text-right">
-          <p className="text-green-600 font-semibold">
+          <p className="text-2xl font-bold text-green-600">
             +{riderEarnings} ETH
           </p>
           <p className="text-xs text-gray-600">Your earnings</p>
+          <p className="text-xs text-gray-500">
+            ≈ ${(parseFloat(riderEarnings) * 3000).toFixed(2)}
+          </p>
         </div>
       </div>
 
-      {order.status === 2 && isMyOrder && (
+      {orderDetails?.items && (
+        <div className="bg-gray-50 rounded-lg p-2 mb-3">
+          <p className="text-xs text-gray-600 font-medium mb-1">Items:</p>
+          <div className="space-y-1">
+            {orderDetails.items.slice(0, 2).map((item, idx) => (
+              <p key={idx} className="text-xs text-gray-700">
+                • {item.name} (x{item.quantity})
+              </p>
+            ))}
+            {orderDetails.items.length > 2 && (
+              <p className="text-xs text-gray-500">
+                +{orderDetails.items.length - 2} more items
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      <button
+        onClick={handleAccept}
+        disabled={isPending || isAssigningConfirming}
+        className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white py-2 px-4 rounded-lg font-bold hover:from-green-600 hover:to-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {isPending ? '⏳ Confirm in Wallet...' : 
+         isAssigningConfirming ? '⏳ Processing Transaction...' :
+         '✅ Accept Delivery'}
+      </button>
+    </div>
+  );
+}
+
+function MyDeliveryCard({ orderId, riderAddress }) {
+  const { order, refetch } = useOrder(orderId);
+  const { restaurant } = useRestaurant(order?.restaurantId);
+  const { markPickedUp, isPending: isPickingUp, isConfirming: isPickingUpConfirming, isSuccess: isPickedUpSuccess } = useMarkPickedUp();
+  const { markDelivered, isPending: isDelivering, isConfirming: isDeliveringConfirming, isSuccess: isDeliveredSuccess } = useMarkDelivered();
+
+  // Auto-refetch when transaction succeeds
+  useEffect(() => {
+    if (isPickedUpSuccess || isDeliveredSuccess) {
+      // Wait a moment for blockchain state to update, then refetch
+      const timeoutId = setTimeout(() => {
+        refetch();
+      }, 2000);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isPickedUpSuccess, isDeliveredSuccess, refetch]);
+
+  // Periodic refetch to catch any updates (every 5 seconds)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refetch();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [refetch]);
+
+  if (!order) return null;
+
+  // Show orders assigned to THIS rider with status 2, 3, 4, or 5
+  const isMyOrder = order.rider?.toLowerCase() === riderAddress?.toLowerCase();
+  if (!isMyOrder || order.status < 2 || order.status > 5) return null;
+
+  const handlePickup = () => {
+    // Double check conditions before calling
+    if (order.status !== 2) {
+      alert(`Order status is ${order.status}, must be 2 (Prepared) to mark as picked up.`);
+      return;
+    }
+    if (order.rider?.toLowerCase() !== riderAddress?.toLowerCase()) {
+      alert('You are not the assigned rider for this order.');
+      return;
+    }
+    
+    try {
+      console.log('Marking order as picked up:', {
+        orderId,
+        currentStatus: order.status,
+        riderAddress: order.rider,
+        yourAddress: riderAddress
+      });
+      markPickedUp(orderId);
+      // Refetch will happen automatically when isPickedUpSuccess becomes true
+    } catch (error) {
+      console.error('Failed to mark picked up:', error);
+      alert(`Failed to update status: ${error.message || 'Please try again.'}`);
+    }
+  };
+
+  const handleDeliver = () => {
+    // Double check conditions before calling
+    if (order.status !== 3) {
+      alert(`Order status is ${order.status}, must be 3 (PickedUp) to mark as delivered.`);
+      return;
+    }
+    if (order.rider?.toLowerCase() !== riderAddress?.toLowerCase()) {
+      alert('You are not the assigned rider for this order.');
+      return;
+    }
+    
+    try {
+      console.log('Marking order as delivered:', {
+        orderId,
+        currentStatus: order.status,
+        riderAddress: order.rider,
+        yourAddress: riderAddress
+      });
+      markDelivered(orderId);
+      // Refetch will happen automatically when isDeliveredSuccess becomes true
+    } catch (error) {
+      console.error('Failed to mark delivered:', error);
+      alert(`Failed to update status: ${error.message || 'Please try again.'}`);
+    }
+  };
+
+  const amount = formatEther(order.amount);
+  const riderEarnings = (parseFloat(amount) * 0.1).toFixed(4);
+
+  const getStatusInfo = () => {
+    switch(order.status) {
+      case 2:
+        return { label: '📦 Assigned', color: 'bg-blue-100 text-blue-800' };
+      case 3:
+        return { label: '🏍️ In Transit', color: 'bg-orange-100 text-orange-800' };
+      case 4:
+        return { label: '📍 Delivered', color: 'bg-purple-100 text-purple-800' };
+      case 5:
+        return { label: '✅ Completed', color: 'bg-green-100 text-green-800' };
+      default:
+        return { label: 'Unknown', color: 'bg-gray-100 text-gray-800' };
+    }
+  };
+
+  const statusInfo = getStatusInfo();
+
+  return (
+    <div className="border-2 border-green-300 rounded-lg p-4 bg-green-50">
+      <div className="flex justify-between items-start mb-3">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <h4 className="font-bold text-lg">Order #{orderId}</h4>
+            <span className={`px-2 py-1 text-xs font-bold rounded-full ${statusInfo.color}`}>
+              {statusInfo.label}
+            </span>
+          </div>
+          <div className="space-y-1 text-sm">
+            {restaurant && (
+              <div className="flex items-center gap-2">
+                <Package className="w-4 h-4 text-gray-600" />
+                <span className="font-medium">{restaurant.name}</span>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-gray-600" />
+              <span>{order.deliveryAddress || 'Address not provided'}</span>
+            </div>
+            {order.customerPhone && (
+              <div className="flex items-center gap-2">
+                <User className="w-4 h-4 text-gray-600" />
+                <span>{order.customerPhone}</span>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-xl font-bold text-green-600">
+            +{riderEarnings} ETH
+          </p>
+          <p className="text-xs text-gray-600">Earnings</p>
+        </div>
+      </div>
+
+      {order.status === 2 && (
         <button
           onClick={handlePickup}
-          disabled={isPickingUp}
-          className="w-full btn-primary text-sm py-2"
+          disabled={isPickingUp || isPickingUpConfirming}
+          className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-2 px-4 rounded-lg font-bold hover:from-blue-600 hover:to-blue-700 transition-all disabled:opacity-50"
         >
-          {isPickingUp ? 'Updating...' : 'Mark as Picked Up'}
+          {isPickingUp ? '⏳ Confirm in Wallet...' : 
+           isPickingUpConfirming ? '⏳ Processing Transaction...' :
+           '📦 Mark as Picked Up'}
         </button>
       )}
 
-      {order.status === 3 && isMyOrder && (
+      {order.status === 3 && (
         <button
           onClick={handleDeliver}
-          disabled={isDelivering}
-          className="w-full btn-primary text-sm py-2"
+          disabled={isDelivering || isDeliveringConfirming}
+          className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white py-2 px-4 rounded-lg font-bold hover:from-green-600 hover:to-emerald-700 transition-all disabled:opacity-50"
         >
-          {isDelivering ? 'Updating...' : 'Mark as Delivered'}
+          {isDelivering ? '⏳ Confirm in Wallet...' : 
+           isDeliveringConfirming ? '⏳ Processing Transaction...' :
+           '📍 Mark as Delivered'}
         </button>
+      )}
+
+      {order.status === 4 && (
+        <div className="bg-purple-100 border border-purple-200 text-purple-800 py-2 px-4 rounded-lg text-center font-medium">
+          ⏳ Waiting for customer confirmation...
+        </div>
+      )}
+
+      {order.status === 5 && (
+        <div className="bg-green-200 border border-green-300 text-green-800 py-2 px-4 rounded-lg text-center font-medium">
+          ✅ Completed - Payment Released!
+        </div>
       )}
     </div>
   );

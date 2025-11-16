@@ -6,6 +6,7 @@ import { Store, Bike, ShoppingBag, Menu, X, Sparkles, AlertTriangle } from 'luci
 import HomePage from './pages/HomePage';
 import CreateOrderPage from './pages/CreateOrderPage';
 import OrderTrackingPage from './pages/OrderTrackingPage';
+import OrderDetailsPage from './pages/OrderDetailsPage';
 import RestaurantDashboard from './pages/RestaurantDashboard';
 import RiderDashboard from './pages/RiderDashboard';
 import MyOrders from './pages/MyOrders';
@@ -16,7 +17,7 @@ import { useRoleDetection } from './hooks/useRoleDetection';
 
 function AppContent() {
   const navigate = useNavigate();
-  const { isConnected, address } = useAccount();
+  const { isConnected, address, status } = useAccount();
   const chainId = useChainId();
   const { role, isLoading, refetch } = useRoleDetection();
   const [showRoleSelection, setShowRoleSelection] = useState(false);
@@ -27,21 +28,32 @@ function AppContent() {
   // Check if on correct network (Sepolia = 11155111)
   const isCorrectNetwork = chainId === 11155111;
 
-  // Detect address changes and disconnections
+  // Detect address changes and handle clean disconnection without UI glitches
   useEffect(() => {
+    // Handle address changes (new connection or account switch)
     if (address && address !== previousAddress) {
+      console.log('Address changed:', address);
       setPreviousAddress(address);
       refetch();
     }
     
-    // Handle wallet disconnection - redirect to home
-    if (!isConnected && previousAddress) {
-      navigate('/');
-      setPreviousAddress(null);
-      setSelectedRole(null);
-      setShowRoleSelection(false);
+    // Handle wallet disconnection - but add a small delay to avoid flicker during connection
+    if (!isConnected && previousAddress && status === 'disconnected') {
+      // Small delay to prevent flicker if wallet is just connecting
+      const timeoutId = setTimeout(() => {
+        // Double-check we're still disconnected before navigating
+        if (!isConnected) {
+          console.log('Wallet disconnected');
+          navigate('/');
+          setPreviousAddress(null);
+          setSelectedRole(null);
+          setShowRoleSelection(false);
+        }
+      }, 500);
+      
+      return () => clearTimeout(timeoutId);
     }
-  }, [address, previousAddress, refetch, isConnected, navigate]);
+  }, [address, previousAddress, refetch, isConnected, navigate, status]);
 
   // Check for pending role and sync with state
   useEffect(() => {
@@ -353,6 +365,7 @@ function AppContent() {
               <Route path="/" element={<HomePage />} />
               <Route path="/order/:restaurantId" element={<CreateOrderPage />} />
               <Route path="/track/:orderId" element={<OrderTrackingPage />} />
+              <Route path="/order-details/:orderId" element={<OrderDetailsPage />} />
               <Route path="/my-orders" element={<MyOrders />} />
               
               {/* Role-based access */}

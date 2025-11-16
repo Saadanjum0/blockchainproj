@@ -274,6 +274,8 @@ export const ORDER_MANAGER_ABI = [
     "inputs": [
       {"internalType": "uint256", "name": "_restaurantId", "type": "uint256"},
       {"internalType": "string", "name": "_ipfsOrderHash", "type": "string"},
+      {"internalType": "string", "name": "_deliveryAddress", "type": "string"},
+      {"internalType": "string", "name": "_customerPhone", "type": "string"},
       {"internalType": "uint256", "name": "_tip", "type": "uint256"}
     ],
     "name": "createOrder",

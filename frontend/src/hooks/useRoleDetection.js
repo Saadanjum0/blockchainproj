@@ -6,100 +6,79 @@ import { RESTAURANT_REGISTRY_ABI, RIDER_REGISTRY_ABI } from '../contracts/abis';
 /**
  * Hook to detect user's role in the system
  * Returns: role ('none', 'restaurant', 'rider', 'customer'), isLoading, refetch
+ * Optimized with timeout to prevent infinite loading
  */
 export function useRoleDetection() {
   const { address, isConnected } = useAccount();
   const [role, setRole] = useState('none');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false); // Start as false, only true when actually checking
   const [restaurantId, setRestaurantId] = useState(null);
 
-  // Check if user is registered as a rider (use isRegistered to avoid errors)
-  const { data: isRiderRegistered, refetch: refetchRider } = useReadContract({
+  // Check if user is registered as a rider
+  const { data: isRiderRegistered, isLoading: riderLoading, refetch: refetchRider } = useReadContract({
     address: CONTRACTS.RiderRegistry,
     abi: RIDER_REGISTRY_ABI,
     functionName: 'isRegistered',
     args: [address],
     enabled: !!address && isConnected,
+    query: {
+      staleTime: 10000, // Cache for 10 seconds
+    },
   });
 
-  // Check restaurant ownership
-  const { data: restaurantCount } = useReadContract({
+  // Check restaurant ownership via direct mapping
+  const { data: ownedRestaurantId, isLoading: restaurantLoading, refetch: refetchRestaurant } = useReadContract({
     address: CONTRACTS.RestaurantRegistry,
     abi: RESTAURANT_REGISTRY_ABI,
-    functionName: 'restaurantCount',
+    functionName: 'ownerToRestaurant',
+    args: [address],
     enabled: !!address && isConnected,
+    query: {
+      staleTime: 10000, // Cache for 10 seconds
+    },
   });
 
-  // Function to check if user owns any restaurant
-  const checkRestaurantOwnership = async () => {
-    if (!restaurantCount || !address) return null;
-
-    // Check each restaurant to see if current address is the owner
-    for (let i = 1; i <= Number(restaurantCount); i++) {
-      try {
-        // This would need to be implemented with proper event listening
-        // For now, we'll use a simplified approach
-        // In production, use The Graph or event logs
-        
-        // You can add restaurant ownership check here
-        // For demo purposes, we'll check localStorage
-        const storedRestaurantId = localStorage.getItem(`restaurant_${address}`);
-        if (storedRestaurantId) {
-          return parseInt(storedRestaurantId);
-        }
-      } catch (error) {
-        console.error('Error checking restaurant:', error);
-      }
-    }
-    return null;
-  };
-
   useEffect(() => {
-    const detectRole = async () => {
       if (!address || !isConnected) {
         setRole('none');
         setIsLoading(false);
         return;
       }
 
+    // Show loading only if actually fetching data
+    if (riderLoading || restaurantLoading) {
       setIsLoading(true);
-
-      // Check if rider is registered
-      if (isRiderRegistered === true) {
-        setRole('rider');
-        setIsLoading(false);
         return;
       }
 
-      // Check if restaurant owner
-      const ownedRestaurantId = await checkRestaurantOwnership();
-      if (ownedRestaurantId) {
-        setRole('restaurant');
-        setRestaurantId(ownedRestaurantId);
+    // Set timeout to prevent infinite loading (max 5 seconds)
+    const loadingTimeout = setTimeout(() => {
+      if (isLoading) {
+        console.warn('Role detection timed out, defaulting to none');
+        setRole('none');
         setIsLoading(false);
-        return;
       }
+    }, 5000);
 
-      // Check if user has placed orders (customer)
-      const hasOrders = localStorage.getItem(`customer_${address}`);
-      if (hasOrders) {
-        setRole('customer');
-        setIsLoading(false);
-        return;
-      }
-
-      // No role detected - new user
-      setRole('none');
+    // Check role priority: Rider > Restaurant > Customer > None
+    if (isRiderRegistered === true) {
+      setRole('rider');
       setIsLoading(false);
-    };
+    } else if (ownedRestaurantId && Number(ownedRestaurantId) > 0) {
+      setRole('restaurant');
+      setRestaurantId(Number(ownedRestaurantId));
+        setIsLoading(false);
+    } else {
+      // No specific role, user is a customer (or new user)
+      setRole('none'); // Will auto-become customer on first order
+      setIsLoading(false);
+    }
 
-    detectRole();
-  }, [address, isConnected, isRiderRegistered, restaurantCount]);
+    return () => clearTimeout(loadingTimeout);
+  }, [address, isConnected, isRiderRegistered, ownedRestaurantId, riderLoading, restaurantLoading]);
 
   const refetch = async () => {
-    await refetchRider();
-    // Trigger re-detection
-    setIsLoading(true);
+    await Promise.all([refetchRider(), refetchRestaurant()]);
   };
 
   return {

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Check Wallet Role</title>
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.8.0/dist/web3.min.js"></script>
+    <style>
+        body { font-family: Arial; max-width: 600px; margin: 50px auto; padding: 20px; }
+        .info { background: #f0f0f0; padding: 15px; border-radius: 8px; margin: 10px 0; }
+        button { background: #4CAF50; color: white; padding: 10px 20px; border: none; cursor: pointer; border-radius: 5px; }
+        button:hover { background: #45a049; }
+        .role { font-size: 24px; font-weight: bold; color: #2196F3; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Check Your Wallet Role</h1>
+    
+    <button onclick="checkRole()">Connect Wallet & Check Role</button>
+    
+    <div id="result"></div>
+
+    <script>
+        const ROLE_MANAGER_ADDRESS = "0x06Dd0bbbC84605cec8ffDEa97168e393510430c2";
+        const ROLE_MANAGER_ABI = [
+            {
+                "inputs": [{"internalType": "address", "name": "_user", "type": "address"}],
+                "name": "getUserRole",
+                "outputs": [{"internalType": "string", "name": "", "type": "string"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [{"internalType": "address", "name": "_user", "type": "address"}],
+                "name": "canPlaceOrder",
+                "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+                "stateMutability": "view",
+                "type": "function"
+            }
+        ];
+
+        async function checkRole() {
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                if (typeof window.ethereum === 'undefined') {
+                    resultDiv.innerHTML = '<p class="error">❌ MetaMask not installed!</p>';
+                    return;
+                }
+
+                // Request account access
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                const userAddress = accounts[0];
+
+                // Create web3 instance
+                const web3 = new Web3(window.ethereum);
+                
+                // Create contract instance
+                const contract = new web3.eth.Contract(ROLE_MANAGER_ABI, ROLE_MANAGER_ADDRESS);
+
+                // Get role
+                const role = await contract.methods.getUserRole(userAddress).call();
+                const canOrder = await contract.methods.canPlaceOrder(userAddress).call();
+
+                resultDiv.innerHTML = `
+                    <div class="info">
+                        <h3>📋 Wallet Information:</h3>
+                        <p><strong>Address:</strong><br>${userAddress}</p>
+                        <p><strong>Current Role:</strong><br><span class="role">${role}</span></p>
+                        <p><strong>Can Place Orders:</strong><br><span class="role">${canOrder ? '✅ YES' : '❌ NO'}</span></p>
+                    </div>
+                    ${!canOrder ? `
+                        <div class="info" style="background: #fff3cd; border: 2px solid #ffc107;">
+                            <h3>⚠️ Problem Found!</h3>
+                            <p>This wallet has the <strong>${role}</strong> role and cannot place orders.</p>
+                            <p><strong>Solution:</strong> Switch to a different MetaMask account that has never been used in this system.</p>
+                        </div>
+                    ` : `
+                        <div class="info" style="background: #d4edda; border: 2px solid #28a745;">
+                            <h3>✅ Wallet is Ready!</h3>
+                            <p>This wallet can place orders. Try again in your app.</p>
+                        </div>
+                    `}
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">❌ Error: ${error.message}</p>`;
+                console.error(error);
+            }
+        }
+    </script>
+</body>
+</html>
+

@@ -61,15 +61,23 @@ export function useCreateOrder() {
     hash,
   });
 
-  const createOrder = async (restaurantId, ipfsOrderHash, amountInEth, tip = 0) => {
+  const createOrder = (restaurantId, ipfsOrderHash, amountInEth, deliveryAddress, customerPhone = '', tip = 0) => {
+    console.log('writeContract function:', writeContract);
+    console.log('Contract address:', CONTRACTS.OrderManager);
+    
+    if (!writeContract) {
+      throw new Error('writeContract is not available. Make sure your wallet is connected.');
+    }
+    
     try {
-      await writeContract({
+      writeContract({
         address: CONTRACTS.OrderManager,
         abi: ORDER_MANAGER_ABI,
         functionName: 'createOrder',
-        args: [restaurantId, ipfsOrderHash, tip],
+        args: [restaurantId, ipfsOrderHash, deliveryAddress, customerPhone, tip],
         value: parseEther(amountInEth.toString()),
       });
+      console.log('writeContract called (transaction initiated)');
     } catch (err) {
       console.error('Order creation error:', err);
       throw err;
@@ -94,8 +102,8 @@ export function useAcceptOrder() {
     hash,
   });
 
-  const acceptOrder = async (orderId) => {
-    await writeContract({
+  const acceptOrder = (orderId) => {
+    writeContract({
       address: CONTRACTS.OrderManager,
       abi: ORDER_MANAGER_ABI,
       functionName: 'acceptOrder',
@@ -121,8 +129,8 @@ export function useMarkPrepared() {
     hash,
   });
 
-  const markPrepared = async (orderId) => {
-    await writeContract({
+  const markPrepared = (orderId) => {
+    writeContract({
       address: CONTRACTS.OrderManager,
       abi: ORDER_MANAGER_ABI,
       functionName: 'markPrepared',
@@ -148,8 +156,8 @@ export function useAssignRider() {
     hash,
   });
 
-  const assignRider = async (orderId, riderAddress) => {
-    await writeContract({
+  const assignRider = (orderId, riderAddress) => {
+    writeContract({
       address: CONTRACTS.OrderManager,
       abi: ORDER_MANAGER_ABI,
       functionName: 'assignRider',
@@ -175,8 +183,8 @@ export function useMarkPickedUp() {
     hash,
   });
 
-  const markPickedUp = async (orderId) => {
-    await writeContract({
+  const markPickedUp = (orderId) => {
+    writeContract({
       address: CONTRACTS.OrderManager,
       abi: ORDER_MANAGER_ABI,
       functionName: 'markPickedUp',
@@ -202,8 +210,8 @@ export function useMarkDelivered() {
     hash,
   });
 
-  const markDelivered = async (orderId) => {
-    await writeContract({
+  const markDelivered = (orderId) => {
+    writeContract({
       address: CONTRACTS.OrderManager,
       abi: ORDER_MANAGER_ABI,
       functionName: 'markDelivered',
@@ -229,13 +237,21 @@ export function useConfirmDelivery() {
     hash,
   });
 
-  const confirmDelivery = async (orderId) => {
-    await writeContract({
-      address: CONTRACTS.OrderManager,
-      abi: ORDER_MANAGER_ABI,
-      functionName: 'confirmDelivery',
-      args: [orderId],
-    });
+  const confirmDelivery = (orderId, restaurantRating = 0, riderRating = 0) => {
+    try {
+      // Convert orderId to BigInt if it's a string
+      const orderIdBigInt = typeof orderId === 'string' ? BigInt(orderId) : orderId;
+      
+      writeContract({
+        address: CONTRACTS.OrderManager,
+        abi: ORDER_MANAGER_ABI,
+        functionName: 'confirmDelivery',
+        args: [orderIdBigInt, restaurantRating, riderRating],
+      });
+    } catch (err) {
+      console.error('Error in confirmDelivery:', err);
+      throw err;
+    }
   };
 
   return {
@@ -256,8 +272,8 @@ export function useCancelOrder() {
     hash,
   });
 
-  const cancelOrder = async (orderId, reason) => {
-    await writeContract({
+  const cancelOrder = (orderId, reason) => {
+    writeContract({
       address: CONTRACTS.OrderManager,
       abi: ORDER_MANAGER_ABI,
       functionName: 'cancelOrder',

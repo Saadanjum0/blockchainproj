@@ -3,6 +3,7 @@ import { useAccount } from 'wagmi';
 import { Store, Star, Clock, Award } from 'lucide-react';
 import { useRestaurantCount, useRestaurant, useRestaurantIdByOwner } from '../hooks/useRestaurants';
 import { formatEther } from 'viem';
+import { formatDate } from '../utils/formatDate';
 
 function HomePage() {
   const { address } = useAccount();
@@ -137,7 +138,7 @@ function RestaurantCard({ restaurantId, isMyRestaurant }) {
           <div className="flex items-center gap-2">
             <Clock className="w-4 h-4 text-gray-500" />
             <span>
-              Joined {new Date(Number(restaurant.registeredAt) * 1000).toLocaleDateString()}
+              Joined {formatDate(restaurant.registeredAt)}
             </span>
           </div>
         </div>

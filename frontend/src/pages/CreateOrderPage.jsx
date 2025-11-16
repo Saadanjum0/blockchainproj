@@ -18,6 +18,7 @@ function CreateOrderPage() {
   const [menuLoading, setMenuLoading] = useState(true);
   const [menuError, setMenuError] = useState(null);
   const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
   const [specialInstructions, setSpecialInstructions] = useState('');
 
   // Fetch menu from IPFS when restaurant loads
@@ -88,23 +89,42 @@ function CreateOrderPage() {
       return;
     }
 
+    if (!customerPhone.trim()) {
+      alert('Please enter your phone number');
+      return;
+    }
+
     try {
+      console.log('Starting order creation...');
+      
       // Create order data and upload to IPFS
       const orderDetails = {
         items: cart.filter(item => item.quantity > 0),
         restaurantId,
         customer: address,
         deliveryAddress,
+        customerPhone,
         specialInstructions,
       };
 
+      console.log('Uploading order data to IPFS...', orderDetails);
       const ipfsHash = await createOrderData(orderDetails);
+      console.log('IPFS hash received:', ipfsHash);
       
-      // Create order on blockchain
-      await createOrder(restaurantId, ipfsHash, totalAmount.toFixed(4), 0);
+      // Create order on blockchain with correct parameters
+      console.log('Creating order on blockchain...', {
+        restaurantId,
+        ipfsHash,
+        amount: totalAmount.toFixed(4),
+        deliveryAddress,
+        customerPhone,
+      });
+      
+      createOrder(restaurantId, ipfsHash, totalAmount.toFixed(4), deliveryAddress, customerPhone, 0);
+      console.log('Order creation transaction initiated');
     } catch (error) {
       console.error('Order creation failed:', error);
-      alert('Failed to create order. Please try again.');
+      alert(`Failed to create order: ${error.message || 'Please try again.'}`);
     }
   };
 
@@ -118,7 +138,7 @@ function CreateOrderPage() {
     }
   }, [isSuccess, hash, navigate]);
 
-  if (loadingRestaurant) {
+  if (loadingRestaurant || menuLoading) {
     return (
       <div className="text-center py-12">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mx-auto"></div>
@@ -129,8 +149,11 @@ function CreateOrderPage() {
 
   if (!restaurant) {
     return (
-      <div className="text-center py-12">
-        <p className="text-red-600">Restaurant not found</p>
+      <div className="text-center py-12 card max-w-md mx-auto">
+        <p className="text-red-600 mb-4">Restaurant not found</p>
+        <button onClick={() => navigate('/')} className="btn-primary">
+          ← Back to Restaurants
+        </button>
       </div>
     );
   }
@@ -183,17 +206,33 @@ function CreateOrderPage() {
         ) : menuError ? (
           <div className="text-center py-8 space-y-3">
             <p className="text-red-600 mb-2">{menuError}</p>
-            <p className="text-sm text-gray-500">The restaurant hasn't uploaded their menu yet</p>
+            {restaurant?.ipfsMenuHash?.includes('DevelopmentHash') ? (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-left">
+                <p className="text-sm font-semibold text-yellow-800 mb-2">⚠️ Development Placeholder Detected</p>
+                <p className="text-sm text-yellow-700 mb-3">
+                  This restaurant's menu was created with a placeholder hash during testing.
+                </p>
+                <p className="text-xs text-yellow-600">
+                  <strong>Restaurant Owner:</strong> Please use the "Menu Management" section in your dashboard to re-upload your menu items. This will create a proper menu that customers can view.
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">The restaurant hasn't uploaded their menu yet</p>
+            )}
             <details className="mt-3">
               <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600">
                 Technical Details
               </summary>
               <div className="mt-2 p-3 bg-gray-50 rounded text-left">
                 <p className="text-xs text-gray-600 mb-1">
-                  <strong>IPFS Hash:</strong> {restaurant?.ipfsMenuHash || 'N/A'}
+                  <strong>Hash:</strong> <code className="bg-gray-100 px-1 rounded">{restaurant?.ipfsMenuHash || 'N/A'}</code>
                 </p>
-                <p className="text-xs text-gray-500">
-                  This restaurant may need to re-upload their menu. IPFS data might not be available yet.
+                <p className="text-xs text-gray-500 mt-2">
+                  {restaurant?.ipfsMenuHash?.includes('DevelopmentHash') 
+                    ? 'This is a temporary placeholder. Restaurant needs to update menu.'
+                    : restaurant?.ipfsMenuHash?.startsWith('local_')
+                    ? 'Using localStorage (development mode without IPFS)'
+                    : 'IPFS data might not be available yet.'}
                 </p>
               </div>
             </details>
@@ -253,6 +292,18 @@ function CreateOrderPage() {
           </div>
           <div>
             <label className="block text-sm font-medium mb-2">
+              Phone Number *
+            </label>
+            <input
+              type="tel"
+              value={customerPhone}
+              onChange={(e) => setCustomerPhone(e.target.value)}
+              placeholder="Enter your phone number"
+              className="input-field"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">
               Special Instructions (Optional)
             </label>
             <textarea
@@ -300,7 +351,7 @@ function CreateOrderPage() {
 
         <button
           onClick={handleCheckout}
-          disabled={isPending || isConfirming || totalAmount === 0 || !deliveryAddress.trim()}
+          disabled={isPending || isConfirming || totalAmount === 0 || !deliveryAddress.trim() || !customerPhone.trim()}
           className="w-full btn-primary"
         >
           {isPending ? '⏳ Confirm in Wallet...' : 
@@ -308,6 +359,7 @@ function CreateOrderPage() {
            isSuccess ? '✅ Order Placed Successfully!' :
            totalAmount === 0 ? 'Add Items to Cart' :
            !deliveryAddress.trim() ? 'Enter Delivery Address' :
+           !customerPhone.trim() ? 'Enter Phone Number' :
            `Place Order • ${totalAmount.toFixed(4)} ETH`}
         </button>
 

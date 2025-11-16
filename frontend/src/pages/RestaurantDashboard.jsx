@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { Link } from 'react-router-dom';
-import { Store, Upload, ToggleLeft, ToggleRight, Package, ImagePlus, ExternalLink } from 'lucide-react';
+import { Store, Upload, ToggleLeft, ToggleRight, Package, ImagePlus, ExternalLink, Clock, User, MapPin } from 'lucide-react';
 import { 
   useRestaurant,
   useRestaurantIdByOwner,
@@ -15,16 +15,28 @@ import { useAvailableRiders } from '../hooks/useRiders';
 import { createRestaurantMetadata, createMenuData, fetchFromIPFS } from '../utils/ipfs';
 import { getOrderStatusName } from '../contracts/abis';
 import { NETWORK_CONFIG } from '../contracts/addresses';
+import { formatDateTime, getTimeAgo } from '../utils/formatDate';
+import { formatEther } from 'viem';
 
 function RestaurantDashboard({ onBack }) {
   const { address } = useAccount();
-  const { restaurantId: myRestaurantId, refetch: refetchId } = useRestaurantIdByOwner(address);
-  const { restaurant, refetch: refetchRestaurant } = useRestaurant(myRestaurantId);
+  const { restaurantId: myRestaurantId, isLoading: loadingId, refetch: refetchId } = useRestaurantIdByOwner(address);
+  const { restaurant, isLoading: loadingRestaurant, refetch: refetchRestaurant } = useRestaurant(myRestaurantId);
 
   if (!address) {
     return (
       <div className="text-center py-12 card max-w-md mx-auto">
         <p className="text-gray-600">Please connect your wallet</p>
+      </div>
+    );
+  }
+
+  // Show loading state while checking if restaurant exists
+  if (loadingId || (myRestaurantId && loadingRestaurant)) {
+    return (
+      <div className="text-center py-12">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mx-auto"></div>
+        <p className="mt-4 text-gray-600">Loading your restaurant...</p>
       </div>
     );
   }
@@ -35,6 +47,16 @@ function RestaurantDashboard({ onBack }) {
       refetchId();
       setTimeout(() => refetchRestaurant(), 1000);
     }} onBack={onBack} />;
+  }
+
+  // Wait for restaurant data to load before showing dashboard
+  if (!restaurant) {
+    return (
+      <div className="text-center py-12">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mx-auto"></div>
+        <p className="mt-4 text-gray-600">Loading restaurant details...</p>
+      </div>
+    );
   }
 
   return (
@@ -554,34 +576,62 @@ function MenuManager({ restaurantId, currentMenuHash }) {
 function RestaurantOrders({ restaurantId, restaurantOwner }) {
   const { orderCount } = useOrderCount();
   const [myOrders, setMyOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Find orders for this restaurant
+  // Find orders for this restaurant by checking each order
   useEffect(() => {
-    if (orderCount > 0) {
-      // In production, you'd filter by restaurantId from events or subgraph
-      const orders = [];
-      for (let i = 1; i <= orderCount; i++) {
-        orders.push(i);
+    const fetchOrders = async () => {
+      if (orderCount > 0 && restaurantId) {
+        setLoading(true);
+        const restaurantOrders = [];
+        
+        // Check all orders to find ones for this restaurant
+        for (let i = 1; i <= Number(orderCount); i++) {
+          restaurantOrders.push(i);
       }
-      setMyOrders(orders.slice(0, 5)); // Show last 5 orders
-    }
+        
+        setMyOrders(restaurantOrders);
+        setLoading(false);
+      } else {
+        setLoading(false);
+      }
+    };
+
+    fetchOrders();
   }, [orderCount, restaurantId]);
 
   return (
     <div className="card">
-      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
         <Package className="w-5 h-5" />
-        Recent Orders
+          My Restaurant Orders
       </h3>
+        <span className="text-sm text-gray-600">
+          {myOrders.length} total
+        </span>
+      </div>
 
-      {myOrders.length === 0 ? (
-        <p className="text-gray-600 text-center py-8">
-          No orders yet. Start accepting orders!
-        </p>
+      {loading ? (
+        <div className="text-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto"></div>
+          <p className="mt-3 text-gray-600 text-sm">Loading orders...</p>
+        </div>
+      ) : myOrders.length === 0 ? (
+        <div className="text-center py-12">
+          <Package className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+          <p className="text-gray-600">No orders yet.</p>
+          <p className="text-sm text-gray-500 mt-1">Orders will appear here when customers place them!</p>
+        </div>
       ) : (
         <div className="space-y-3">
           {myOrders.map(orderId => (
-            <RestaurantOrderCard key={orderId} orderId={orderId} restaurantOwner={restaurantOwner} />
+            <RestaurantOrderCard 
+              key={orderId} 
+              orderId={orderId} 
+              restaurantId={restaurantId}
+              restaurantOwner={restaurantOwner} 
+            />
           ))}
         </div>
       )}
@@ -589,7 +639,7 @@ function RestaurantOrders({ restaurantId, restaurantOwner }) {
   );
 }
 
-function RestaurantOrderCard({ orderId, restaurantOwner }) {
+function RestaurantOrderCard({ orderId, restaurantId, restaurantOwner }) {
   const { order, refetch } = useOrder(orderId);
   const { acceptOrder, isPending: isAccepting } = useAcceptOrder();
   const { markPrepared, isPending: isPreparing } = useMarkPrepared();
@@ -598,74 +648,164 @@ function RestaurantOrderCard({ orderId, restaurantOwner }) {
 
   if (!order) return null;
 
-  const isMyOrder = order.restaurantId.toString() === '1'; // Simplified check
-
+  // Only show orders for THIS restaurant
+  const isMyOrder = Number(order.restaurantId) === Number(restaurantId);
   if (!isMyOrder) return null;
 
-  const handleAccept = async () => {
-    await acceptOrder(orderId);
+  const handleAccept = () => {
+    acceptOrder(orderId);
     setTimeout(() => refetch(), 2000);
   };
 
-  const handlePrepared = async () => {
-    await markPrepared(orderId);
+  const handlePrepared = () => {
+    markPrepared(orderId);
     setTimeout(() => refetch(), 2000);
   };
 
-  const handleAssignRider = async () => {
+  const handleAssignRider = () => {
     if (riders.length === 0) {
       alert('No riders available');
       return;
     }
-    await assignRider(orderId, riders[0]); // Assign first available rider
+    assignRider(orderId, riders[0]); // Assign first available rider
     setTimeout(() => refetch(), 2000);
   };
 
+  const amount = formatEther(order.amount);
+  const statusName = getOrderStatusName(order.status);
+
+  const getStatusColor = (status) => {
+    switch(status) {
+      case 0: return 'bg-yellow-100 text-yellow-800 border-yellow-300';  // Created
+      case 1: return 'bg-blue-100 text-blue-800 border-blue-300';  // Accepted
+      case 2: return 'bg-purple-100 text-purple-800 border-purple-300';  // Prepared
+      case 3: return 'bg-orange-100 text-orange-800 border-orange-300';  // PickedUp
+      case 4: return 'bg-green-100 text-green-800 border-green-300';  // Delivered
+      case 5: return 'bg-green-600 text-white border-green-700';  // Completed
+      default: return 'bg-gray-100 text-gray-800 border-gray-300';
+    }
+  };
+
   return (
-    <div className="border rounded-lg p-4">
-      <div className="flex justify-between items-start mb-3">
-        <div>
-          <p className="font-semibold">Order #{orderId}</p>
-          <p className="text-sm text-gray-600">
-            {getOrderStatusName(order.status)}
+    <div className="border-2 rounded-lg p-4 hover:shadow-md transition-shadow">
+      <div className="flex justify-between items-start mb-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <h4 className="font-bold text-lg">Order #{orderId}</h4>
+            <span className={`px-3 py-1 rounded-full text-xs font-bold border-2 ${getStatusColor(order.status)}`}>
+              {statusName}
+            </span>
+          </div>
+          <div className="space-y-1 text-sm text-gray-600">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              <span>{getTimeAgo(order.createdAt)}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <User className="w-4 h-4" />
+              <span className="font-mono text-xs">{order.customer.slice(0,6)}...{order.customer.slice(-4)}</span>
+            </div>
+            {order.deliveryAddress && (
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4" />
+                <span>{order.deliveryAddress}</span>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-sm text-gray-600">Amount</p>
+          <p className="text-xl font-bold text-orange-600">
+            {parseFloat(amount).toFixed(4)} ETH
+          </p>
+          <p className="text-xs text-gray-500">
+            ≈ ${(parseFloat(amount) * 3000).toFixed(2)}
           </p>
         </div>
-        <span className="text-orange-600 font-semibold">
-          {(Number(order.amount) / 1e18).toFixed(4)} ETH
-        </span>
       </div>
 
+      {/* Action Buttons Based on Status */}
+      <div className="space-y-2">
       {order.status === 0 && (
+          <div className="space-y-2">
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              <p className="text-sm text-yellow-800 font-medium">
+                🔔 New order waiting for your confirmation
+              </p>
+            </div>
         <button
           onClick={handleAccept}
           disabled={isAccepting}
-          className="w-full btn-primary text-sm py-2"
+              className="w-full btn-primary"
         >
-          {isAccepting ? 'Accepting...' : 'Accept Order'}
+              {isAccepting ? '⏳ Accepting...' : '✅ Accept Order'}
         </button>
+          </div>
       )}
 
       {order.status === 1 && (
+          <div className="space-y-2">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-sm text-blue-800 font-medium">
+                👨‍🍳 Start preparing the food
+              </p>
+            </div>
         <button
           onClick={handlePrepared}
           disabled={isPreparing}
-          className="w-full btn-primary text-sm py-2"
+              className="w-full btn-primary"
         >
-          {isPreparing ? 'Updating...' : 'Mark as Prepared'}
+              {isPreparing ? '⏳ Updating...' : '🍳 Mark as Prepared'}
         </button>
+          </div>
       )}
 
       {order.status === 2 && (
+          <div className="space-y-2">
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+              <p className="text-sm text-purple-800 font-medium">
+                🏍️ Ready for rider pickup
+              </p>
+              <p className="text-xs text-purple-600 mt-1">
+                {riders.length > 0 ? `${riders.length} riders available` : 'Waiting for rider...'}
+              </p>
+            </div>
+            {riders.length > 0 && (
         <button
           onClick={handleAssignRider}
-          disabled={isAssigning || riders.length === 0}
-          className="w-full btn-primary text-sm py-2"
+                disabled={isAssigning}
+                className="w-full btn-primary"
         >
-          {isAssigning ? 'Assigning...' : 
-           riders.length === 0 ? 'No Riders Available' :
-           'Assign Rider'}
+                {isAssigning ? '⏳ Assigning...' : '🏍️ Assign Rider'}
         </button>
       )}
+          </div>
+        )}
+
+        {order.status === 3 && (
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+            <p className="text-sm text-orange-800 font-medium">
+              🚚 Out for delivery
+            </p>
+          </div>
+        )}
+
+        {order.status === 4 && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+            <p className="text-sm text-green-800 font-medium">
+              ✅ Delivered - Waiting for customer confirmation
+            </p>
+          </div>
+        )}
+
+        {order.status === 5 && (
+          <div className="bg-green-600 text-white rounded-lg p-3">
+            <p className="text-sm font-medium">
+              🎉 Order completed! Payment released
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

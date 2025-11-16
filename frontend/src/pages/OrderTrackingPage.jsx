@@ -21,8 +21,19 @@ function OrderTrackingPage() {
   const navigate = useNavigate();
   const { address } = useAccount();
   const { order, isLoading, refetch } = useOrder(orderId);
-  const { confirmDelivery, isPending: isConfirming, isSuccess: isConfirmed, hash: confirmHash } = useConfirmDelivery();
+  const { confirmDelivery, isPending: isConfirming, isSuccess: isConfirmed, hash: confirmHash, error: confirmError } = useConfirmDelivery();
   const { cancelOrder, isPending: isCancelling, isSuccess: isCancelled, hash: cancelHash } = useCancelOrder();
+
+  // Catch any unhandled errors
+  useEffect(() => {
+    const errorHandler = (event) => {
+      console.error('🚨 Global error caught:', event.error);
+    };
+    window.addEventListener('error', errorHandler);
+    return () => window.removeEventListener('error', errorHandler);
+  }, []);
+
+  console.log('🔵 Component rendered. confirmDelivery:', confirmDelivery);
 
   // Auto-refetch order status every 10 seconds
   useEffect(() => {
@@ -32,21 +43,26 @@ function OrderTrackingPage() {
     return () => clearInterval(interval);
   }, [refetch]);
 
-  const handleConfirmDelivery = async () => {
+  const handleConfirmDelivery = () => {
+    console.log('🔴 BUTTON CLICKED - handleConfirmDelivery executing');
+    console.log('orderId:', orderId);
+    console.log('confirmDelivery function:', confirmDelivery);
+    
     try {
-      await confirmDelivery(orderId);
+      confirmDelivery(orderId, 0, 0);
+      console.log('✅ confirmDelivery called');
     } catch (error) {
-      console.error('Failed to confirm delivery:', error);
-      alert('Failed to confirm delivery. Please try again.');
+      console.error('❌ Failed to confirm delivery:', error);
+      alert(`Failed to confirm delivery: ${error.message || 'Unknown error'}`);
     }
   };
 
-  const handleCancelOrder = async () => {
+  const handleCancelOrder = () => {
     const reason = prompt('Please provide a reason for cancellation:');
     if (!reason) return;
 
     try {
-      await cancelOrder(orderId, reason);
+      cancelOrder(orderId, reason);
     } catch (error) {
       console.error('Failed to cancel order:', error);
       alert('Failed to cancel order. Please try again.');
@@ -80,6 +96,16 @@ function OrderTrackingPage() {
   const isCustomer = order.customer.toLowerCase() === address?.toLowerCase();
   const statusName = getOrderStatusName(order.status);
   const amount = formatEther(order.amount);
+
+  // Debug: Log critical render conditions
+  console.log('=== OrderTrackingPage Render Debug ===');
+  console.log('order.status:', order.status, typeof order.status);
+  console.log('isCustomer:', isCustomer);
+  console.log('isConfirmed:', isConfirmed);
+  console.log('isConfirming:', isConfirming);
+  console.log('Button should show:', order.status === 4 && !isConfirmed && isCustomer);
+  console.log('confirmDelivery function:', typeof confirmDelivery);
+  console.log('======================================');
 
   const orderSteps = [
     { status: 0, label: 'Order Placed', icon: CheckCircle },
@@ -209,6 +235,13 @@ function OrderTrackingPage() {
       {isCustomer && (
         <div className="card">
           <h3 className="text-lg font-semibold mb-4">Actions</h3>
+          <div className="mb-4 p-3 bg-gray-100 rounded text-xs">
+            <strong>Debug Info:</strong><br/>
+            Status: {order.status}<br/>
+            isCustomer: {String(isCustomer)}<br/>
+            isConfirmed: {String(isConfirmed)}<br/>
+            Condition met: {String(order.status === 4 && !isConfirmed)}
+          </div>
           
           {order.status === 4 && !isConfirmed && (
             <div className="space-y-3">
@@ -216,12 +249,19 @@ function OrderTrackingPage() {
                 Your order has been delivered! Please confirm to release payment to the restaurant and rider.
               </p>
               <button
-                onClick={handleConfirmDelivery}
+                onClick={(e) => {
+                  console.log('🟢 BUTTON ONCLICK FIRED', e);
+                  handleConfirmDelivery();
+                }}
                 disabled={isConfirming}
                 className="w-full btn-primary"
+                style={{ pointerEvents: 'auto' }}
               >
                 {isConfirming ? 'Confirming...' : '✅ Confirm Delivery'}
               </button>
+              <p className="text-xs text-gray-500">
+                Debug: status={order.status}, isConfirmed={String(isConfirmed)}, isConfirming={String(isConfirming)}
+              </p>
             </div>
           )}
 

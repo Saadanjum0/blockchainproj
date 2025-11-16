@@ -4,6 +4,7 @@ import { Package, Clock, CheckCircle } from 'lucide-react';
 import { useCustomerOrders, useOrder } from '../hooks/useOrders';
 import { getOrderStatusName } from '../contracts/abis';
 import { formatEther } from 'viem';
+import { formatDate, formatTime } from '../utils/formatDate';
 
 function MyOrders() {
   const { address } = useAccount();
@@ -83,7 +84,7 @@ function OrderCard({ orderId }) {
   };
 
   return (
-    <Link to={`/track/${orderId}`} className="card hover:shadow-lg transition-shadow block">
+    <Link to={`/order-details/${orderId}`} className="card hover:shadow-lg transition-shadow block">
       <div className="flex justify-between items-start mb-4">
         <div>
           <h3 className="text-lg font-bold">Order #{orderId}</h3>
@@ -105,13 +106,13 @@ function OrderCard({ orderId }) {
         <div>
           <p className="text-gray-600">Date</p>
           <p className="font-semibold">
-            {new Date(Number(order.createdAt) * 1000).toLocaleDateString()}
+            {formatDate(order.createdAt)}
           </p>
         </div>
         <div>
           <p className="text-gray-600">Time</p>
           <p className="font-semibold">
-            {new Date(Number(order.createdAt) * 1000).toLocaleTimeString()}
+            {formatTime(order.createdAt)}
           </p>
         </div>
       </div>
