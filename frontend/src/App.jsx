@@ -43,12 +43,12 @@ function AppContent() {
       const timeoutId = setTimeout(() => {
         // Double-check we're still disconnected before navigating
         if (!isConnected) {
-          console.log('Wallet disconnected');
-          navigate('/');
-          setPreviousAddress(null);
-          setSelectedRole(null);
-          setShowRoleSelection(false);
-        }
+      console.log('Wallet disconnected');
+      navigate('/');
+      setPreviousAddress(null);
+      setSelectedRole(null);
+      setShowRoleSelection(false);
+    }
       }, 500);
       
       return () => clearTimeout(timeoutId);

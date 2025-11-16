@@ -20,20 +20,8 @@ function OrderDetailsPage() {
   
   const [orderDetails, setOrderDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(true);
-  const [restaurantRating, setRestaurantRating] = useState(0);
-  const [riderRating, setRiderRating] = useState(0);
 
   const { confirmDelivery, isPending, isConfirming, isSuccess, hash } = useConfirmDelivery();
-
-  // Debug logging
-  console.log('🔵 OrderDetailsPage - Rendered');
-  console.log('orderId:', orderId, typeof orderId);
-  console.log('order:', order);
-  console.log('isCustomer:', isCustomer);
-  console.log('order.status:', order?.status);
-  console.log('confirmDelivery:', confirmDelivery);
-  console.log('isPending:', isPending);
-  console.log('isConfirming:', isConfirming);
 
   // Fetch order details from IPFS
   useEffect(() => {
@@ -42,7 +30,6 @@ function OrderDetailsPage() {
         try {
           setLoadingDetails(true);
           const details = await fetchFromIPFS(order.ipfsOrderHash);
-          console.log('Order details from IPFS:', details);
           setOrderDetails(details);
         } catch (error) {
           console.error('Failed to fetch order details:', error);
@@ -84,12 +71,7 @@ function OrderDetailsPage() {
   const platformFee = (parseFloat(amount) * 0.1).toFixed(4);
 
   const handleConfirm = () => {
-    try {
-      confirmDelivery(orderId, restaurantRating, riderRating);
-    } catch (error) {
-      console.error('Failed to confirm delivery:', error);
-      alert('Failed to confirm delivery. Please try again.');
-    }
+    confirmDelivery(orderId);
   };
 
   const getStatusColor = (status) => {
@@ -338,39 +320,6 @@ function OrderDetailsPage() {
               <p className="text-sm text-gray-700 mb-4">
                 Have you received your order? Confirm to release payment to restaurant and rider.
               </p>
-
-              {/* Rating */}
-              <div className="space-y-3 mb-4">
-                <div>
-                  <label className="text-xs font-medium block mb-1">Rate Restaurant (Optional)</label>
-                  <div className="flex gap-1">
-                    {[1, 2, 3, 4, 5].map(star => (
-                      <button
-                        key={star}
-                        onClick={() => setRestaurantRating(star)}
-                        className={`text-2xl ${star <= restaurantRating ? 'text-yellow-500' : 'text-gray-300'}`}
-                      >
-                        ⭐
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium block mb-1">Rate Rider (Optional)</label>
-                  <div className="flex gap-1">
-                    {[1, 2, 3, 4, 5].map(star => (
-                      <button
-                        key={star}
-                        onClick={() => setRiderRating(star)}
-                        className={`text-2xl ${star <= riderRating ? 'text-yellow-500' : 'text-gray-300'}`}
-                      >
-                        ⭐
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
 
               <button
                 onClick={handleConfirm}

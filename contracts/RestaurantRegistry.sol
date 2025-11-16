@@ -29,10 +29,16 @@ contract RestaurantRegistry is Ownable, ReentrancyGuard {
     }
 
     IRoleManager public roleManager;
+    address public orderManager;
     
     mapping(uint256 => Restaurant) public restaurants;
     mapping(address => uint256) public ownerToRestaurant;
     uint256 public restaurantCount;
+    
+    modifier onlyOrderManager() {
+        require(msg.sender == orderManager, "Only OrderManager");
+        _;
+    }
 
     event RestaurantRegistered(
         uint256 indexed restaurantId,
@@ -47,6 +53,11 @@ contract RestaurantRegistry is Ownable, ReentrancyGuard {
     constructor(address _roleManager) Ownable(msg.sender) {
         require(_roleManager != address(0), "Invalid RoleManager address");
         roleManager = IRoleManager(_roleManager);
+    }
+    
+    function setOrderManager(address _orderManager) external onlyOwner {
+        require(_orderManager != address(0), "Invalid address");
+        orderManager = _orderManager;
     }
 
     /**
@@ -166,7 +177,7 @@ contract RestaurantRegistry is Ownable, ReentrancyGuard {
     /**
      * @dev Increment orders count (only callable by OrderManager)
      */
-    function incrementOrders(uint256 _restaurantId) external onlyOwner {
+    function incrementOrders(uint256 _restaurantId) external onlyOrderManager {
         require(_restaurantId > 0 && _restaurantId <= restaurantCount, "Invalid ID");
         restaurants[_restaurantId].totalOrders++;
     }
@@ -174,7 +185,7 @@ contract RestaurantRegistry is Ownable, ReentrancyGuard {
     /**
      * @dev Add rating (only callable by OrderManager)
      */
-    function addRating(uint256 _restaurantId, uint256 _rating) external onlyOwner {
+    function addRating(uint256 _restaurantId, uint256 _rating) external onlyOrderManager {
         require(_restaurantId > 0 && _restaurantId <= restaurantCount, "Invalid ID");
         require(_rating >= 1 && _rating <= 5, "Rating must be 1-5");
         

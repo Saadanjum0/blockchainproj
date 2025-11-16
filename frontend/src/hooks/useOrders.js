@@ -62,26 +62,17 @@ export function useCreateOrder() {
   });
 
   const createOrder = (restaurantId, ipfsOrderHash, amountInEth, deliveryAddress, customerPhone = '', tip = 0) => {
-    console.log('writeContract function:', writeContract);
-    console.log('Contract address:', CONTRACTS.OrderManager);
-    
     if (!writeContract) {
       throw new Error('writeContract is not available. Make sure your wallet is connected.');
     }
     
-    try {
-      writeContract({
-        address: CONTRACTS.OrderManager,
-        abi: ORDER_MANAGER_ABI,
-        functionName: 'createOrder',
-        args: [restaurantId, ipfsOrderHash, deliveryAddress, customerPhone, tip],
-        value: parseEther(amountInEth.toString()),
-      });
-      console.log('writeContract called (transaction initiated)');
-    } catch (err) {
-      console.error('Order creation error:', err);
-      throw err;
-    }
+    writeContract({
+      address: CONTRACTS.OrderManager,
+      abi: ORDER_MANAGER_ABI,
+      functionName: 'createOrder',
+      args: [restaurantId, ipfsOrderHash, deliveryAddress, customerPhone, tip],
+      value: parseEther(amountInEth.toString()),
+    });
   };
 
   return {
@@ -237,21 +228,16 @@ export function useConfirmDelivery() {
     hash,
   });
 
-  const confirmDelivery = (orderId, restaurantRating = 0, riderRating = 0) => {
-    try {
+  const confirmDelivery = (orderId) => {
       // Convert orderId to BigInt if it's a string
       const orderIdBigInt = typeof orderId === 'string' ? BigInt(orderId) : orderId;
       
       writeContract({
-        address: CONTRACTS.OrderManager,
-        abi: ORDER_MANAGER_ABI,
-        functionName: 'confirmDelivery',
-        args: [orderIdBigInt, restaurantRating, riderRating],
-      });
-    } catch (err) {
-      console.error('Error in confirmDelivery:', err);
-      throw err;
-    }
+      address: CONTRACTS.OrderManager,
+      abi: ORDER_MANAGER_ABI,
+      functionName: 'confirmDelivery',
+      args: [orderIdBigInt],
+    });
   };
 
   return {
