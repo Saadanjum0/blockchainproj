@@ -6,14 +6,15 @@ export const CONTRACTS = {
   RiderRegistry: "0xDCe2E4dBD7978A46945fEf7055BbE9f3bD04a739",
   Escrow: "0x635dA77a7d0d5031dbDAd6C5918d801be451eA54",
   OrderManager: "0xb5108e097a10055527466B06793f6E0D85528C75",
+  PlatformManager: "0xf71695d303354e934038e16580393f5a14e5c8dc",
 };
 
-// Sepolia Network Configuration
+// Open Campus Codex Network Configuration
 export const NETWORK_CONFIG = {
-  chainId: 11155111,
-  name: "Sepolia Testnet",
-  rpcUrl: "https://rpc.sepolia.org",
-  blockExplorer: "https://sepolia.etherscan.io"
+  chainId: 656476,
+  name: "Open Campus Codex",
+  rpcUrl: "https://open-campus-codex-sepolia.drpc.org",
+  blockExplorer: "https://opencampus-codex.blockscout.com"
 };
 
 // ⚠️ ROLE ISOLATION: One wallet = One role only!
