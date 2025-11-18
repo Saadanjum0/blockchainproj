@@ -1,0 +1,16 @@
+{
+  "name": "blockchain-food-delivery-dapp",
+  "version": "1.0.0",
+  "description": "Decentralized Food Delivery Platform",
+  "private": true,
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "dev": "cd frontend && npm run dev",
+    "install": "cd frontend && npm install"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
+
