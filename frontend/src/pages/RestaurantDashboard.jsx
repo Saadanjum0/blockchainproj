@@ -9,7 +9,7 @@ import {
   useUpdateMenu, 
   useSetRestaurantStatus 
 } from '../hooks/useRestaurants';
-import { useOrderCount, useOrder } from '../hooks/useOrders';
+import { useOrderCount, useOrder, useRestaurantOrders } from '../hooks/useOrders';
 import { useAcceptOrder, useMarkPrepared, useAssignRider } from '../hooks/useOrders';
 import { useAvailableRiders } from '../hooks/useRiders';
 import { createRestaurantMetadata, createMenuData, fetchFromIPFS } from '../utils/ipfs';
@@ -20,8 +20,19 @@ import { formatEther } from 'viem';
 
 function RestaurantDashboard({ onBack }) {
   const { address } = useAccount();
-  const { restaurantId: myRestaurantId, isLoading: loadingId, refetch: refetchId } = useRestaurantIdByOwner(address);
+  const { 
+    restaurantId: myRestaurantId, 
+    isLoading: loadingId, 
+    isFetched: restaurantIdFetched,
+    refetch: refetchId 
+  } = useRestaurantIdByOwner(address);
   const { restaurant, isLoading: loadingRestaurant, refetch: refetchRestaurant } = useRestaurant(myRestaurantId);
+
+  useEffect(() => {
+    if (address) {
+      refetchId();
+    }
+  }, [address, refetchId]);
 
   if (!address) {
     return (
@@ -31,8 +42,10 @@ function RestaurantDashboard({ onBack }) {
     );
   }
 
+  const isCheckingOwnership = !restaurantIdFetched || loadingId;
+
   // Show loading state while checking if restaurant exists
-  if (loadingId || (myRestaurantId && loadingRestaurant)) {
+  if (isCheckingOwnership || (myRestaurantId && loadingRestaurant)) {
     return (
       <div className="text-center py-12">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mx-auto"></div>
@@ -42,7 +55,7 @@ function RestaurantDashboard({ onBack }) {
   }
 
   // If no restaurant found, show registration form
-  if (!myRestaurantId || myRestaurantId === 0) {
+  if (restaurantIdFetched && (!myRestaurantId || myRestaurantId === 0)) {
     return <RegisterRestaurantForm onSuccess={() => {
       refetchId();
       setTimeout(() => refetchRestaurant(), 1000);
@@ -574,31 +587,19 @@ function MenuManager({ restaurantId, currentMenuHash }) {
 }
 
 function RestaurantOrders({ restaurantId, restaurantOwner }) {
-  const { orderCount } = useOrderCount();
-  const [myOrders, setMyOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Use the proper hook to get restaurant orders
+  const { orderIds, isLoading, isFetched, refetch } = useRestaurantOrders(restaurantId);
 
-  // Find orders for this restaurant by checking each order
+  // Auto-refetch every 10 seconds to keep orders updated
   useEffect(() => {
-    const fetchOrders = async () => {
-      if (orderCount > 0 && restaurantId) {
-        setLoading(true);
-        const restaurantOrders = [];
-        
-        // Check all orders to find ones for this restaurant
-        for (let i = 1; i <= Number(orderCount); i++) {
-          restaurantOrders.push(i);
-      }
-        
-        setMyOrders(restaurantOrders);
-        setLoading(false);
-      } else {
-        setLoading(false);
-      }
-    };
+    if (restaurantId && isFetched) {
+      const interval = setInterval(() => {
+        refetch();
+      }, 10000); // Refetch every 10 seconds
 
-    fetchOrders();
-  }, [orderCount, restaurantId]);
+      return () => clearInterval(interval);
+    }
+  }, [restaurantId, isFetched, refetch]);
 
   return (
     <div className="card">
@@ -607,17 +608,31 @@ function RestaurantOrders({ restaurantId, restaurantOwner }) {
         <Package className="w-5 h-5" />
           My Restaurant Orders
       </h3>
-        <span className="text-sm text-gray-600">
-          {myOrders.length} total
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-600">
+            {orderIds.length} {orderIds.length === 1 ? 'order' : 'orders'}
+          </span>
+          <button
+            onClick={() => refetch()}
+            className="text-xs text-orange-600 hover:text-orange-700 hover:underline"
+            disabled={isLoading}
+          >
+            🔄 Refresh
+          </button>
+        </div>
       </div>
 
-      {loading ? (
+      {isLoading ? (
         <div className="text-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto"></div>
           <p className="mt-3 text-gray-600 text-sm">Loading orders...</p>
         </div>
-      ) : myOrders.length === 0 ? (
+      ) : !isFetched ? (
+        <div className="text-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto"></div>
+          <p className="mt-3 text-gray-600 text-sm">Fetching orders...</p>
+        </div>
+      ) : orderIds.length === 0 ? (
         <div className="text-center py-12">
           <Package className="w-12 h-12 mx-auto text-gray-400 mb-3" />
           <p className="text-gray-600">No orders yet.</p>
@@ -625,12 +640,13 @@ function RestaurantOrders({ restaurantId, restaurantOwner }) {
         </div>
       ) : (
         <div className="space-y-3">
-          {myOrders.map(orderId => (
+          {orderIds.map(orderId => (
             <RestaurantOrderCard 
               key={orderId} 
-              orderId={orderId} 
+              orderId={Number(orderId)} 
               restaurantId={restaurantId}
-              restaurantOwner={restaurantOwner} 
+              restaurantOwner={restaurantOwner}
+              onUpdate={refetch}
             />
           ))}
         </div>
@@ -639,27 +655,109 @@ function RestaurantOrders({ restaurantId, restaurantOwner }) {
   );
 }
 
-function RestaurantOrderCard({ orderId, restaurantId, restaurantOwner }) {
-  const { order, refetch } = useOrder(orderId);
-  const { acceptOrder, isPending: isAccepting } = useAcceptOrder();
-  const { markPrepared, isPending: isPreparing } = useMarkPrepared();
-  const { assignRider, isPending: isAssigning } = useAssignRider();
+function RestaurantOrderCard({ orderId, restaurantId, restaurantOwner, onUpdate }) {
+  const { order, refetch: refetchOrder } = useOrder(orderId);
+  const { acceptOrder, isPending: isAccepting, isConfirming: isAcceptingConfirming, isSuccess: acceptSuccess, hash: acceptHash } = useAcceptOrder();
+  const { markPrepared, isPending: isPreparing, isConfirming: isPreparingConfirming, isSuccess: preparedSuccess, hash: preparedHash } = useMarkPrepared();
+  const { assignRider, isPending: isAssigning, isConfirming: isAssigningConfirming, isSuccess: assignSuccess, hash: assignHash } = useAssignRider();
   const { riders } = useAvailableRiders();
 
-  if (!order) return null;
+  // Refetch order when transaction is confirmed
+  useEffect(() => {
+    if (acceptSuccess && !isAcceptingConfirming && acceptHash) {
+      console.log('Order accepted! Refetching order data...');
+      // Transaction confirmed on-chain, refetch immediately
+      refetchOrder();
+      if (onUpdate) onUpdate();
+      
+      // Refetch again after 2 seconds to ensure blockchain state is updated
+      const timeout1 = setTimeout(() => {
+        console.log('Refetching order data (first retry)...');
+        refetchOrder();
+        if (onUpdate) onUpdate();
+      }, 2000);
+      
+      // Final refetch after 5 seconds
+      const timeout2 = setTimeout(() => {
+        console.log('Refetching order data (final retry)...');
+        refetchOrder();
+        if (onUpdate) onUpdate();
+      }, 5000);
+      
+      return () => {
+        clearTimeout(timeout1);
+        clearTimeout(timeout2);
+      };
+    }
+  }, [acceptSuccess, isAcceptingConfirming, acceptHash, refetchOrder, onUpdate]);
 
-  // Only show orders for THIS restaurant
+  useEffect(() => {
+    if (preparedSuccess && !isPreparingConfirming && preparedHash) {
+      console.log('Order marked as prepared! Refetching order data...');
+      refetchOrder();
+      if (onUpdate) onUpdate();
+      
+      const timeout1 = setTimeout(() => {
+        refetchOrder();
+        if (onUpdate) onUpdate();
+      }, 2000);
+      
+      const timeout2 = setTimeout(() => {
+        refetchOrder();
+        if (onUpdate) onUpdate();
+      }, 5000);
+      
+      return () => {
+        clearTimeout(timeout1);
+        clearTimeout(timeout2);
+      };
+    }
+  }, [preparedSuccess, isPreparingConfirming, preparedHash, refetchOrder, onUpdate]);
+
+  useEffect(() => {
+    if (assignSuccess && !isAssigningConfirming && assignHash) {
+      console.log('Rider assigned! Refetching order data...');
+      refetchOrder();
+      if (onUpdate) onUpdate();
+      
+      const timeout1 = setTimeout(() => {
+        refetchOrder();
+        if (onUpdate) onUpdate();
+      }, 2000);
+      
+      const timeout2 = setTimeout(() => {
+        refetchOrder();
+        if (onUpdate) onUpdate();
+      }, 5000);
+      
+      return () => {
+        clearTimeout(timeout1);
+        clearTimeout(timeout2);
+      };
+    }
+  }, [assignSuccess, isAssigningConfirming, assignHash, refetchOrder, onUpdate]);
+
+  if (!order) {
+    return (
+      <div className="border-2 rounded-lg p-4">
+        <div className="animate-pulse">
+          <div className="h-4 bg-gray-200 rounded w-1/4 mb-2"></div>
+          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+        </div>
+      </div>
+    );
+  }
+
+  // Verify this order belongs to this restaurant (safety check)
   const isMyOrder = Number(order.restaurantId) === Number(restaurantId);
   if (!isMyOrder) return null;
 
   const handleAccept = () => {
     acceptOrder(orderId);
-    setTimeout(() => refetch(), 2000);
   };
 
   const handlePrepared = () => {
     markPrepared(orderId);
-    setTimeout(() => refetch(), 2000);
   };
 
   const handleAssignRider = () => {
@@ -668,7 +766,6 @@ function RestaurantOrderCard({ orderId, restaurantId, restaurantOwner }) {
       return;
     }
     assignRider(orderId, riders[0]); // Assign first available rider
-    setTimeout(() => refetch(), 2000);
   };
 
   const amount = formatEther(order.amount);
@@ -735,11 +832,21 @@ function RestaurantOrderCard({ orderId, restaurantId, restaurantOwner }) {
             </div>
         <button
           onClick={handleAccept}
-          disabled={isAccepting}
+          disabled={isAccepting || isAcceptingConfirming}
               className="w-full btn-primary"
         >
-              {isAccepting ? '⏳ Accepting...' : '✅ Accept Order'}
+              {isAccepting ? '⏳ Waiting for wallet...' : 
+               isAcceptingConfirming ? '⏳ Confirming transaction...' :
+               acceptSuccess ? '✅ Order Accepted!' :
+               '✅ Accept Order'}
         </button>
+            {acceptSuccess && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-2">
+                <p className="text-xs text-green-800">
+                  ✅ Transaction confirmed! Updating order status...
+                </p>
+              </div>
+            )}
           </div>
       )}
 
@@ -752,11 +859,21 @@ function RestaurantOrderCard({ orderId, restaurantId, restaurantOwner }) {
             </div>
         <button
           onClick={handlePrepared}
-          disabled={isPreparing}
+          disabled={isPreparing || isPreparingConfirming}
               className="w-full btn-primary"
         >
-              {isPreparing ? '⏳ Updating...' : '🍳 Mark as Prepared'}
+              {isPreparing ? '⏳ Waiting for wallet...' : 
+               isPreparingConfirming ? '⏳ Confirming transaction...' :
+               preparedSuccess ? '✅ Marked as Prepared!' :
+               '🍳 Mark as Prepared'}
         </button>
+            {preparedSuccess && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-2">
+                <p className="text-xs text-green-800">
+                  ✅ Transaction confirmed! Updating order status...
+                </p>
+              </div>
+            )}
           </div>
       )}
 
@@ -773,12 +890,22 @@ function RestaurantOrderCard({ orderId, restaurantId, restaurantOwner }) {
             {riders.length > 0 && (
         <button
           onClick={handleAssignRider}
-                disabled={isAssigning}
+                disabled={isAssigning || isAssigningConfirming}
                 className="w-full btn-primary"
         >
-                {isAssigning ? '⏳ Assigning...' : '🏍️ Assign Rider'}
+                {isAssigning ? '⏳ Waiting for wallet...' : 
+                 isAssigningConfirming ? '⏳ Confirming transaction...' :
+                 assignSuccess ? '✅ Rider Assigned!' :
+                 '🏍️ Assign Rider'}
         </button>
       )}
+            {assignSuccess && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-2 mt-2">
+                <p className="text-xs text-green-800">
+                  ✅ Transaction confirmed! Updating order status...
+                </p>
+              </div>
+            )}
           </div>
         )}
 

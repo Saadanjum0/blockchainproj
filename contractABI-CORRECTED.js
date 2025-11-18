@@ -1,4 +1,5 @@
-// Contract ABIs - CORRECTED to match deployed contracts exactly
+// Contract ABIs for interacting with smart contracts
+// ⚠️ CORRECTED VERSION - Matches Deployed Contracts
 
 export const RESTAURANT_REGISTRY_ABI = [
   {
@@ -332,20 +333,11 @@ export const ORDER_MANAGER_ABI = [
     "anonymous": false,
     "inputs": [
       {"indexed": true, "internalType": "uint256", "name": "orderId", "type": "uint256"},
-      {"indexed": false, "internalType": "uint8", "name": "oldStatus", "type": "uint8"},
-      {"indexed": false, "internalType": "uint8", "name": "newStatus", "type": "uint8"},
+      {"indexed": true, "internalType": "uint8", "name": "oldStatus", "type": "uint8"},
+      {"indexed": true, "internalType": "uint8", "name": "newStatus", "type": "uint8"},
       {"indexed": false, "internalType": "uint256", "name": "timestamp", "type": "uint256"}
     ],
     "name": "OrderStatusChanged",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {"indexed": true, "internalType": "uint256", "name": "orderId", "type": "uint256"},
-      {"indexed": false, "internalType": "uint256", "name": "timestamp", "type": "uint256"}
-    ],
-    "name": "PaymentReleased",
     "type": "event"
   },
   {
@@ -356,6 +348,15 @@ export const ORDER_MANAGER_ABI = [
       {"indexed": false, "internalType": "uint8", "name": "riderRating", "type": "uint8"}
     ],
     "name": "RatingsSubmitted",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "internalType": "uint256", "name": "orderId", "type": "uint256"},
+      {"indexed": false, "internalType": "uint256", "name": "timestamp", "type": "uint256"}
+    ],
+    "name": "PaymentReleased",
     "type": "event"
   },
   {
@@ -380,7 +381,7 @@ export const ORDER_MANAGER_ABI = [
   },
   {
     "inputs": [{"internalType": "uint256", "name": "_orderId", "type": "uint256"}],
-    "name": "markPrepared",
+    "name": "markAsPrepared",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -397,14 +398,14 @@ export const ORDER_MANAGER_ABI = [
   },
   {
     "inputs": [{"internalType": "uint256", "name": "_orderId", "type": "uint256"}],
-    "name": "markPickedUp",
+    "name": "pickupOrder",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
   },
   {
     "inputs": [{"internalType": "uint256", "name": "_orderId", "type": "uint256"}],
-    "name": "markDelivered",
+    "name": "markAsDelivered",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -464,16 +465,16 @@ export const ORDER_MANAGER_ABI = [
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "orderCount",
-    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+    "inputs": [{"internalType": "address", "name": "_customer", "type": "address"}],
+    "name": "getCustomerOrders",
+    "outputs": [{"internalType": "uint256[]", "name": "", "type": "uint256[]"}],
     "stateMutability": "view",
     "type": "function"
   },
   {
-    "inputs": [{"internalType": "address", "name": "_customer", "type": "address"}],
-    "name": "getCustomerOrders",
-    "outputs": [{"internalType": "uint256[]", "name": "", "type": "uint256[]"}],
+    "inputs": [],
+    "name": "orderCount",
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
     "stateMutability": "view",
     "type": "function"
   },
@@ -676,34 +677,6 @@ export const ROLE_MANAGER_ABI = [
     "type": "event"
   },
   {
-    "inputs": [],
-    "name": "owner",
-    "outputs": [{"internalType": "address", "name": "", "type": "address"}],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [{"internalType": "address", "name": "_contract", "type": "address"}],
-    "name": "authorizeContract",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [{"internalType": "address", "name": "_contract", "type": "address"}],
-    "name": "revokeContract",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [{"internalType": "address", "name": "", "type": "address"}],
-    "name": "authorizedContracts",
-    "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [{"internalType": "address", "name": "", "type": "address"}],
     "name": "isRestaurant",
     "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
@@ -732,6 +705,34 @@ export const ROLE_MANAGER_ABI = [
     "type": "function"
   },
   {
+    "inputs": [{"internalType": "address", "name": "", "type": "address"}],
+    "name": "authorizedContracts",
+    "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "address", "name": "_contract", "type": "address"}],
+    "name": "authorizeContract",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "address", "name": "_contract", "type": "address"}],
+    "name": "revokeContract",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "inputs": [{"internalType": "address", "name": "_user", "type": "address"}],
     "name": "hasNoRole",
     "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
@@ -740,22 +741,8 @@ export const ROLE_MANAGER_ABI = [
   },
   {
     "inputs": [{"internalType": "address", "name": "_user", "type": "address"}],
-    "name": "canRegisterAsRestaurant",
-    "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [{"internalType": "address", "name": "_user", "type": "address"}],
-    "name": "canRegisterAsRider",
-    "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [{"internalType": "address", "name": "_user", "type": "address"}],
-    "name": "canPlaceOrder",
-    "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+    "name": "getUserRole",
+    "outputs": [{"internalType": "string", "name": "", "type": "string"}],
     "stateMutability": "view",
     "type": "function"
   },
@@ -789,24 +776,39 @@ export const ROLE_MANAGER_ABI = [
   },
   {
     "inputs": [{"internalType": "address", "name": "_user", "type": "address"}],
-    "name": "getUserRole",
-    "outputs": [{"internalType": "string", "name": "", "type": "string"}],
+    "name": "canRegisterAsRestaurant",
+    "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "address", "name": "_user", "type": "address"}],
+    "name": "canRegisterAsRider",
+    "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "address", "name": "_user", "type": "address"}],
+    "name": "canPlaceOrder",
+    "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
     "stateMutability": "view",
     "type": "function"
   }
 ];
 
-// Helper function to get human-readable order status
-export function getOrderStatusName(statusCode) {
-  const statuses = {
-    0: 'Created',
-    1: 'Accepted',
-    2: 'Prepared',
-    3: 'PickedUp',
-    4: 'Delivered',
-    5: 'Completed',
-    6: 'Cancelled',
-    7: 'Disputed'
-  };
-  return statuses[statusCode] || 'Unknown';
-}
+// Helper function to get status name from status code
+export const getOrderStatusName = (statusCode) => {
+  const statuses = [
+    "Created",      // 0
+    "Accepted",     // 1
+    "Assigned",     // 2  
+    "PickedUp",     // 3
+    "Delivered",    // 4
+    "Completed",    // 5
+    "Cancelled",    // 6
+    "Disputed",     // 7
+    "Refunded"      // 8
+  ];
+  return statuses[statusCode] || "Unknown";
+};

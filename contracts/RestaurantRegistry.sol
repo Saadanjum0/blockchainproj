@@ -34,7 +34,7 @@ contract RestaurantRegistry is Ownable, ReentrancyGuard {
     mapping(uint256 => Restaurant) public restaurants;
     mapping(address => uint256) public ownerToRestaurant;
     uint256 public restaurantCount;
-    
+
     modifier onlyOrderManager() {
         require(msg.sender == orderManager, "Only OrderManager");
         _;
@@ -54,9 +54,13 @@ contract RestaurantRegistry is Ownable, ReentrancyGuard {
         require(_roleManager != address(0), "Invalid RoleManager address");
         roleManager = IRoleManager(_roleManager);
     }
-    
+
+    /**
+     * @dev Set OrderManager address (only owner can call this once)
+     */
     function setOrderManager(address _orderManager) external onlyOwner {
         require(_orderManager != address(0), "Invalid address");
+        require(orderManager == address(0), "Already set");
         orderManager = _orderManager;
     }
 

@@ -7,6 +7,52 @@ import { useCreateOrder } from '../hooks/useOrders';
 import { createOrderData, fetchFromIPFS } from '../utils/ipfs';
 import { NETWORK_CONFIG } from '../contracts/addresses';
 
+// Helper function to format ETH with proper decimal handling for small amounts
+function formatEth(amount) {
+  if (amount === 0) return '0.0000';
+  
+  // For very small amounts (< 0.0001 ETH), show up to 6 decimals
+  if (amount < 0.0001) {
+    // Show 6 decimals for very small amounts like 0.000001
+    const formatted = amount.toFixed(6);
+    // Remove trailing zeros but keep at least 4 decimals
+    const parts = formatted.split('.');
+    if (parts[1]) {
+      const decimals = parts[1].replace(/0+$/, '');
+      const minDecimals = Math.max(4, decimals.length);
+      return amount.toFixed(minDecimals);
+    }
+    return formatted;
+  } else if (amount < 0.01) {
+    // Show 5 decimals for small amounts (0.0001 to 0.01)
+    return amount.toFixed(5);
+  } else {
+    // Show 4 decimals for normal amounts (>= 0.01)
+    return amount.toFixed(4);
+  }
+}
+
+// Helper function to calculate total with proper precision
+function calculateTotal(cart) {
+  // Use multiplication by 1000000 to avoid floating point errors
+  // Then divide back to get accurate result
+  const totalInWei = cart.reduce((sum, item) => {
+    // Convert to wei-equivalent (multiply by 1e6 for precision)
+    const itemPriceInWei = Math.round(item.price * 1000000);
+    const itemTotal = itemPriceInWei * item.quantity;
+    return sum + itemTotal;
+  }, 0);
+  
+  // Convert back to ETH
+  return totalInWei / 1000000;
+}
+
+// Helper function to check if amount is greater than zero with proper precision
+function isAmountValid(amount) {
+  // Check if amount is greater than 0.0000001 ETH (minimum wei precision)
+  return amount > 0.0000001;
+}
+
 function CreateOrderPage() {
   const { restaurantId } = useParams();
   const navigate = useNavigate();
@@ -75,11 +121,13 @@ function CreateOrderPage() {
     ));
   };
 
-  const totalAmount = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  // Calculate total with proper precision handling
+  const totalAmount = calculateTotal(cart);
   const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   const handleCheckout = async () => {
-    if (totalAmount === 0) {
+    // Use proper validation for small amounts
+    if (!isAmountValid(totalAmount)) {
       alert('Please add items to cart');
       return;
     }
@@ -94,8 +142,19 @@ function CreateOrderPage() {
       return;
     }
 
+    // Validate restaurant is active before attempting order
+    if (!restaurant || !restaurant.isActive) {
+      alert('This restaurant is currently closed. Please choose another restaurant.');
+      return;
+    }
+
     try {
       console.log('Starting order creation...');
+      console.log('Restaurant validation:', {
+        restaurantId,
+        isActive: restaurant?.isActive,
+        name: restaurant?.name,
+      });
       
       // Create order data and upload to IPFS
       const orderDetails = {
@@ -111,20 +170,39 @@ function CreateOrderPage() {
       const ipfsHash = await createOrderData(orderDetails);
       console.log('IPFS hash received:', ipfsHash);
       
+      // Validate amount is greater than 0 with proper precision
+      // Don't truncate - use full precision for blockchain
+      if (!isAmountValid(totalAmount)) {
+        throw new Error('Order amount must be greater than 0');
+      }
+      
+      // Use full precision for blockchain (don't round)
+      const amountInEth = totalAmount;
+      
       // Create order on blockchain with correct parameters
       console.log('Creating order on blockchain...', {
-        restaurantId,
+        restaurantId: Number(restaurantId),
         ipfsHash,
-        amount: totalAmount.toFixed(4),
+        amount: amountInEth,
         deliveryAddress,
         customerPhone,
+        tip: 0,
       });
       
-      createOrder(restaurantId, ipfsHash, totalAmount.toFixed(4), deliveryAddress, customerPhone, 0);
+      await createOrder(
+        Number(restaurantId), 
+        ipfsHash, 
+        amountInEth.toString(), 
+        deliveryAddress, 
+        customerPhone, 
+        0
+      );
       console.log('Order creation transaction initiated');
     } catch (error) {
       console.error('Order creation failed:', error);
-      alert(`Failed to create order: ${error.message || 'Please try again.'}`);
+      const errorMessage = error?.message || error?.shortMessage || error?.details || 'Unknown error';
+      console.error('Full error object:', error);
+      alert(`Failed to create order: ${errorMessage}\n\nCheck browser console for details.`);
     }
   };
 
@@ -248,7 +326,7 @@ function CreateOrderPage() {
               <div key={item.id} className="flex items-center justify-between border-b pb-4 last:border-b-0 hover:bg-orange-50/30 px-3 -mx-3 rounded-lg transition-colors">
                 <div className="flex-1">
                   <h3 className="font-medium text-lg">{item.name}</h3>
-                  <p className="text-orange-600 font-semibold">{item.price} ETH</p>
+                  <p className="text-orange-600 font-semibold">{formatEth(item.price)} ETH</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <button
@@ -330,19 +408,19 @@ function CreateOrderPage() {
         <div className="space-y-2 mb-4">
           <div className="flex justify-between text-gray-600">
             <span>Subtotal:</span>
-            <span>{totalAmount.toFixed(4)} ETH</span>
+            <span>{formatEth(totalAmount)} ETH</span>
           </div>
           <div className="flex justify-between text-gray-600">
             <span>Platform Fee (10%):</span>
-            <span>{(totalAmount * 0.1).toFixed(4)} ETH</span>
+            <span>{formatEth(totalAmount * 0.1)} ETH</span>
           </div>
           <div className="flex justify-between text-gray-600">
             <span>Rider Fee (10%):</span>
-            <span>{(totalAmount * 0.1).toFixed(4)} ETH</span>
+            <span>{formatEth(totalAmount * 0.1)} ETH</span>
           </div>
           <div className="flex justify-between font-bold text-lg border-t pt-2">
             <span>Total:</span>
-            <span className="text-orange-600">{totalAmount.toFixed(4)} ETH</span>
+            <span className="text-orange-600">{formatEth(totalAmount)} ETH</span>
           </div>
           <p className="text-xs text-gray-500">
             ≈ ${(totalAmount * 3000).toFixed(2)} USD (estimated)
@@ -351,16 +429,16 @@ function CreateOrderPage() {
 
         <button
           onClick={handleCheckout}
-          disabled={isPending || isConfirming || totalAmount === 0 || !deliveryAddress.trim() || !customerPhone.trim()}
+          disabled={isPending || isConfirming || !isAmountValid(totalAmount) || !deliveryAddress.trim() || !customerPhone.trim()}
           className="w-full btn-primary"
         >
           {isPending ? '⏳ Confirm in Wallet...' : 
            isConfirming ? '⏳ Processing Transaction...' : 
            isSuccess ? '✅ Order Placed Successfully!' :
-           totalAmount === 0 ? 'Add Items to Cart' :
+           !isAmountValid(totalAmount) ? 'Add Items to Cart' :
            !deliveryAddress.trim() ? 'Enter Delivery Address' :
            !customerPhone.trim() ? 'Enter Phone Number' :
-           `Place Order • ${totalAmount.toFixed(4)} ETH`}
+           `Place Order • ${formatEth(totalAmount)} ETH`}
         </button>
 
         {hash && (

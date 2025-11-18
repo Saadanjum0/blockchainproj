@@ -2,13 +2,16 @@ import { Link } from 'react-router-dom';
 import { useAccount } from 'wagmi';
 import { Store, Star, Clock, Award } from 'lucide-react';
 import { useRestaurantCount, useRestaurant, useRestaurantIdByOwner } from '../hooks/useRestaurants';
+import { useRoleDetection } from '../hooks/useRoleDetection';
 import { formatEther } from 'viem';
 import { formatDate } from '../utils/formatDate';
 
 function HomePage() {
   const { address } = useAccount();
-  const { restaurantCount, isLoading } = useRestaurantCount();
+  const { restaurantCount, isLoading, isFetched } = useRestaurantCount();
   const { restaurantId: myRestaurantId } = useRestaurantIdByOwner(address);
+  const { role } = useRoleDetection();
+  const isStillLoading = isLoading || !isFetched;
 
   return (
     <div className="animate-fadeIn">
@@ -21,7 +24,7 @@ function HomePage() {
         </p>
       </div>
 
-      {isLoading ? (
+      {isStillLoading ? (
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading restaurants...</p>
@@ -41,14 +44,18 @@ function HomePage() {
           <Store className="w-16 h-16 mx-auto text-gray-400 mb-4" />
           <h3 className="text-xl font-semibold mb-2">No restaurants yet</h3>
           <p className="text-gray-600 mb-4">
-            Be the first to register your restaurant on the blockchain!
+            {role === 'restaurant'
+              ? 'Be the first to register your restaurant on the blockchain!'
+              : 'Restaurants are registering now. Please check back soon.'}
           </p>
-          <Link 
-            to="/restaurant-dashboard" 
-            className="btn-primary inline-block"
-          >
-            Register Your Restaurant
-          </Link>
+          {role === 'restaurant' && (
+            <Link 
+              to="/restaurant-dashboard" 
+              className="btn-primary inline-block"
+            >
+              Register Your Restaurant
+            </Link>
+          )}
         </div>
       )}
     </div>

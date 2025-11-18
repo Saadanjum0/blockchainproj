@@ -19,12 +19,20 @@ export function useOrderCount() {
 
 // Hook to get single order details
 export function useOrder(orderId) {
-  const { data: order, isLoading, error, refetch } = useReadContract({
+  const { data: order, isLoading, error, refetch, isFetched } = useReadContract({
     address: CONTRACTS.OrderManager,
     abi: ORDER_MANAGER_ABI,
     functionName: 'getOrder',
     args: [orderId],
     enabled: !!orderId && orderId > 0,
+    query: {
+      staleTime: 0, // Always consider data stale, refetch immediately
+      gcTime: 1000 * 30, // Keep in cache for 30 seconds
+      refetchOnMount: true,
+      refetchOnReconnect: true,
+      refetchOnWindowFocus: true,
+      // Don't auto-poll by default, but allow manual refetch
+    },
   });
 
   return {
@@ -32,6 +40,7 @@ export function useOrder(orderId) {
     isLoading,
     error,
     refetch,
+    isFetched,
   };
 }
 
@@ -53,6 +62,33 @@ export function useCustomerOrders(customerAddress) {
   };
 }
 
+// Hook to get restaurant orders
+export function useRestaurantOrders(restaurantId) {
+  const { data: orderIds, isLoading, error, refetch, isFetched } = useReadContract({
+    address: CONTRACTS.OrderManager,
+    abi: ORDER_MANAGER_ABI,
+    functionName: 'getRestaurantOrders',
+    args: [restaurantId],
+    enabled: !!restaurantId && restaurantId > 0,
+    query: {
+      staleTime: 0, // Always refetch
+      gcTime: 1000 * 30, // Keep in cache for 30 seconds
+      refetchOnMount: true,
+      refetchOnReconnect: true,
+      refetchOnWindowFocus: true,
+      refetchInterval: 10000, // Poll every 10 seconds
+    },
+  });
+
+  return {
+    orderIds: orderIds || [],
+    isLoading,
+    error,
+    refetch,
+    isFetched,
+  };
+}
+
 // Hook to create an order
 export function useCreateOrder() {
   const { writeContract, data: hash, error, isPending } = useWriteContract();
@@ -61,18 +97,63 @@ export function useCreateOrder() {
     hash,
   });
 
-  const createOrder = (restaurantId, ipfsOrderHash, amountInEth, deliveryAddress, customerPhone = '', tip = 0) => {
+  const createOrder = async (restaurantId, ipfsOrderHash, amountInEth, deliveryAddress, customerPhone = '', tip = 0) => {
+    console.log('createOrder called with:', {
+      restaurantId,
+      ipfsOrderHash,
+      amountInEth,
+      deliveryAddress,
+      customerPhone,
+      tip,
+    });
+    
     if (!writeContract) {
       throw new Error('writeContract is not available. Make sure your wallet is connected.');
     }
     
-    writeContract({
-      address: CONTRACTS.OrderManager,
-      abi: ORDER_MANAGER_ABI,
-      functionName: 'createOrder',
-      args: [restaurantId, ipfsOrderHash, deliveryAddress, customerPhone, tip],
-      value: parseEther(amountInEth.toString()),
-    });
+    // Validate inputs
+    if (!restaurantId || restaurantId <= 0) {
+      throw new Error('Invalid restaurant ID');
+    }
+    if (!ipfsOrderHash || ipfsOrderHash.trim() === '') {
+      throw new Error('IPFS hash is required');
+    }
+    if (!deliveryAddress || deliveryAddress.trim() === '') {
+      throw new Error('Delivery address is required');
+    }
+    if (!amountInEth || parseFloat(amountInEth) <= 0) {
+      throw new Error('Order amount must be greater than 0');
+    }
+    
+    try {
+      const value = parseEther(amountInEth.toString());
+      console.log('Calling writeContract with:', {
+        address: CONTRACTS.OrderManager,
+        functionName: 'createOrder',
+        args: [restaurantId, ipfsOrderHash, deliveryAddress, customerPhone, tip],
+        value: value.toString(),
+        gas: '900000',
+      });
+      
+      await writeContract({
+        address: CONTRACTS.OrderManager,
+        abi: ORDER_MANAGER_ABI,
+        functionName: 'createOrder',
+        args: [restaurantId, ipfsOrderHash, deliveryAddress, customerPhone, tip],
+        value: value,
+        gas: 900000n, // prevent MetaMask from defaulting to 21M gas (Sepolia cap 16.7M)
+      });
+      console.log('writeContract called successfully (transaction initiated)');
+    } catch (err) {
+      console.error('Order creation error:', err);
+      console.error('Error details:', {
+        message: err?.message,
+        shortMessage: err?.shortMessage,
+        details: err?.details,
+        cause: err?.cause,
+      });
+      throw err;
+    }
   };
 
   return {
@@ -228,15 +309,15 @@ export function useConfirmDelivery() {
     hash,
   });
 
-  const confirmDelivery = (orderId) => {
-      // Convert orderId to BigInt if it's a string
-      const orderIdBigInt = typeof orderId === 'string' ? BigInt(orderId) : orderId;
-      
-      writeContract({
+  const confirmDelivery = (orderId, restaurantRating = 0, riderRating = 0) => {
+    // Convert orderId to BigInt if it's a string
+    const orderIdBigInt = typeof orderId === 'string' ? BigInt(orderId) : orderId;
+    
+    writeContract({
       address: CONTRACTS.OrderManager,
       abi: ORDER_MANAGER_ABI,
       functionName: 'confirmDelivery',
-      args: [orderIdBigInt],
+      args: [orderIdBigInt, restaurantRating, riderRating],
     });
   };
 

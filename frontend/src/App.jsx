@@ -24,6 +24,7 @@ function AppContent() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [previousAddress, setPreviousAddress] = useState(null);
   const [selectedRole, setSelectedRole] = useState(null);
+  const [storedRole, setStoredRole] = useState(null);
   
   // Check if on correct network (Sepolia = 11155111)
   const isCorrectNetwork = chainId === 11155111;
@@ -43,47 +44,57 @@ function AppContent() {
       const timeoutId = setTimeout(() => {
         // Double-check we're still disconnected before navigating
         if (!isConnected) {
-      console.log('Wallet disconnected');
-      navigate('/');
-      setPreviousAddress(null);
-      setSelectedRole(null);
-      setShowRoleSelection(false);
-    }
+          console.log('Wallet disconnected');
+          // Clear any pending role from localStorage
+          localStorage.removeItem(`pendingRole_${previousAddress}`);
+          navigate('/');
+          setPreviousAddress(null);
+          setSelectedRole(null);
+          setShowRoleSelection(false);
+        }
       }, 500);
       
       return () => clearTimeout(timeoutId);
     }
   }, [address, previousAddress, refetch, isConnected, navigate, status]);
 
-  // Check for pending role and sync with state
+  // Sync stored role from localStorage when address changes
   useEffect(() => {
     if (address) {
-      const pendingRole = localStorage.getItem(`pendingRole_${address}`);
-      if (pendingRole) {
-        setSelectedRole(pendingRole);
-      } else {
-        setSelectedRole(null);
-      }
+      const savedRole = localStorage.getItem(`userRole_${address}`);
+      setStoredRole(savedRole);
+      setSelectedRole(savedRole);
     } else {
+      setStoredRole(null);
       setSelectedRole(null);
     }
   }, [address]);
 
-  // Show role selection for new users (but not if they have a pending role)
+  // Persist actual blockchain role once detected
   useEffect(() => {
-    // Check localStorage directly to avoid race conditions
-    const hasPendingRole = address && localStorage.getItem(`pendingRole_${address}`);
-    
-    if (isConnected && !isLoading && role === 'none' && !hasPendingRole) {
+    if (address && role !== 'none') {
+      localStorage.setItem(`userRole_${address}`, role);
+      setStoredRole(role);
+      setSelectedRole(role);
+    }
+  }, [address, role]);
+
+  // Show role selection only if wallet truly has no role and nothing stored
+  useEffect(() => {
+    if (isConnected && !isLoading && role === 'none' && !storedRole) {
       setShowRoleSelection(true);
     } else {
       setShowRoleSelection(false);
     }
-  }, [isConnected, isLoading, role, address]);
+  }, [isConnected, isLoading, role, storedRole]);
+
+  const effectiveRole = role !== 'none' ? role : storedRole || 'none';
 
   const handleRoleSelection = (newRole) => {
-    // Store selection temporarily
-    localStorage.setItem(`pendingRole_${address}`, newRole);
+    if (address) {
+      localStorage.setItem(`userRole_${address}`, newRole);
+    }
+    setStoredRole(newRole);
     setSelectedRole(newRole);
     setShowRoleSelection(false);
     
@@ -98,10 +109,10 @@ function AppContent() {
   };
 
   const handleBackToSelection = () => {
-    // Clear pending role
     if (address) {
-      localStorage.removeItem(`pendingRole_${address}`);
+      localStorage.removeItem(`userRole_${address}`);
     }
+    setStoredRole(null);
     setSelectedRole(null);
     setShowRoleSelection(true);
     navigate('/');
@@ -150,7 +161,7 @@ function AppContent() {
                       Browse
                     </Link>
 
-                    {(role === 'customer' || role === 'none') && (
+                    {(effectiveRole === 'customer' || effectiveRole === 'none') && (
                       <Link 
                         to="/my-orders" 
                         className="text-gray-700 hover:text-orange-600 font-medium transition-colors"
@@ -159,7 +170,7 @@ function AppContent() {
                       </Link>
                     )}
 
-                    {role === 'restaurant' && (
+                    {effectiveRole === 'restaurant' && (
                       <Link 
                         to="/restaurant-dashboard" 
                         className="flex items-center gap-2 text-orange-600 font-semibold"
@@ -169,7 +180,7 @@ function AppContent() {
                       </Link>
                     )}
 
-                    {role === 'rider' && (
+                    {effectiveRole === 'rider' && (
                         <Link 
                         to="/rider-dashboard" 
                         className="flex items-center gap-2 text-green-600 font-semibold"
@@ -206,7 +217,7 @@ function AppContent() {
                       Browse Restaurants
                     </Link>
 
-                    {(role === 'customer' || role === 'none') && (
+                    {(effectiveRole === 'customer' || effectiveRole === 'none') && (
                     <Link 
                         to="/my-orders" 
                         className="block text-gray-700 hover:text-orange-600 font-medium"
@@ -216,7 +227,7 @@ function AppContent() {
                       </Link>
                   )}
 
-                    {role === 'restaurant' && (
+                    {effectiveRole === 'restaurant' && (
                       <Link 
                         to="/restaurant-dashboard" 
                         className="block text-orange-600 font-semibold"
@@ -226,7 +237,7 @@ function AppContent() {
                       </Link>
                     )}
 
-                    {role === 'rider' && (
+                    {effectiveRole === 'rider' && (
                       <Link 
                         to="/rider-dashboard" 
                         className="block text-green-600 font-semibold"

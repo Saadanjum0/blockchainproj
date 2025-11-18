@@ -20,6 +20,8 @@ function OrderDetailsPage() {
   
   const [orderDetails, setOrderDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(true);
+  const [restaurantRating, setRestaurantRating] = useState(0);
+  const [riderRating, setRiderRating] = useState(0);
 
   const { confirmDelivery, isPending, isConfirming, isSuccess, hash } = useConfirmDelivery();
 
@@ -71,7 +73,7 @@ function OrderDetailsPage() {
   const platformFee = (parseFloat(amount) * 0.1).toFixed(4);
 
   const handleConfirm = () => {
-    confirmDelivery(orderId);
+    confirmDelivery(orderId, restaurantRating, riderRating);
   };
 
   const getStatusColor = (status) => {
@@ -320,6 +322,41 @@ function OrderDetailsPage() {
               <p className="text-sm text-gray-700 mb-4">
                 Have you received your order? Confirm to release payment to restaurant and rider.
               </p>
+
+              {/* Rating */}
+              <div className="space-y-3 mb-4">
+                <div>
+                  <label className="text-xs font-medium block mb-1">Rate Restaurant (Optional)</label>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setRestaurantRating(star)}
+                        className={`text-2xl ${star <= restaurantRating ? 'text-yellow-500' : 'text-gray-300'}`}
+                      >
+                        ⭐
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium block mb-1">Rate Rider (Optional)</label>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setRiderRating(star)}
+                        className={`text-2xl ${star <= riderRating ? 'text-yellow-500' : 'text-gray-300'}`}
+                      >
+                        ⭐
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
 
               <button
                 onClick={handleConfirm}

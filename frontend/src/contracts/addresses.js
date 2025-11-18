@@ -1,20 +1,19 @@
 // PASTE YOUR DEPLOYED CONTRACT ADDRESSES HERE AFTER DEPLOYING ON REMIX
 
 export const CONTRACTS = {
-  RoleManager: "0x06Dd0bbbC84605cec8ffDEa97168e393510430c2",
-  RestaurantRegistry: "0xc2C57712c648553d28d58e73Edb7E5cBa6b7db3B",
-  RiderRegistry: "0xDCe2E4dBD7978A46945fEf7055BbE9f3bD04a739",
-  Escrow: "0x635dA77a7d0d5031dbDAd6C5918d801be451eA54",
-  OrderManager: "0xb5108e097a10055527466B06793f6E0D85528C75",
-  PlatformManager: "0xf71695d303354e934038e16580393f5a14e5c8dc",
+  RoleManager: "0x2f208c050Ed931c31DeDAA80CD4329224B2c748E",
+  RestaurantRegistry: "0x13f14FbE548742f1544BB44A9ad3714F93A02DF3",
+  RiderRegistry: "0x2a8F6e0E27E1160F603E90B267a2De7dAc9432F7",
+  Escrow: "0xe1A88562C2AF4913cFEaD16105eD51996f11cE6d",
+  OrderManager: "0xdd938211EFbfe6374DDD475C76C0fd10Acde7EB3",
 };
 
-// Open Campus Codex Network Configuration
+// Sepolia Network Configuration
 export const NETWORK_CONFIG = {
-  chainId: 656476,
-  name: "Open Campus Codex",
-  rpcUrl: "https://open-campus-codex-sepolia.drpc.org",
-  blockExplorer: "https://opencampus-codex.blockscout.com"
+  chainId: 11155111,
+  name: "Sepolia Testnet",
+  rpcUrl: "https://rpc.sepolia.org",
+  blockExplorer: "https://sepolia.etherscan.io"
 };
 
 // ⚠️ ROLE ISOLATION: One wallet = One role only!

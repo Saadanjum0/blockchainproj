@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FoodChain Diagnostics</title>
+  <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+      color: #333;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      padding: 40px;
+    }
+    h1 {
+      color: #667eea;
+      margin-bottom: 10px;
+      font-size: 32px;
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 16px;
+    }
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 15px 40px;
+      border-radius: 10px;
+      font-size: 18px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      margin-bottom: 30px;
+    }
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .check-item {
+      display: flex;
+      align-items: center;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 10px;
+      background: #f8f9fa;
+      border-left: 4px solid #ddd;
+    }
+    .check-item.loading {
+      border-left-color: #ffa500;
+      background: #fff3cd;
+    }
+    .check-item.success {
+      border-left-color: #28a745;
+      background: #d4edda;
+    }
+    .check-item.error {
+      border-left-color: #dc3545;
+      background: #f8d7da;
+    }
+    .check-item.warning {
+      border-left-color: #ffc107;
+      background: #fff3cd;
+    }
+    .icon {
+      font-size: 24px;
+      margin-right: 15px;
+      min-width: 30px;
+    }
+    .content {
+      flex: 1;
+    }
+    .label {
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+    .details {
+      font-size: 14px;
+      color: #666;
+      font-family: 'Courier New', monospace;
+    }
+    .summary {
+      margin-top: 30px;
+      padding: 20px;
+      border-radius: 10px;
+      background: #e7f3ff;
+      border: 2px solid #2196f3;
+    }
+    .summary h2 {
+      color: #2196f3;
+      margin-bottom: 15px;
+    }
+    .summary-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #ccc;
+    }
+    .summary-item:last-child {
+      border-bottom: none;
+    }
+    .code {
+      background: #2d2d2d;
+      color: #f8f8f2;
+      padding: 20px;
+      border-radius: 10px;
+      overflow-x: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      margin-top: 20px;
+      display: none;
+    }
+    .code.show {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 FoodChain System Diagnostics</h1>
+    <p class="subtitle">Automated verification of your blockchain deployment</p>
+    
+    <button id="runBtn" onclick="runDiagnostics()">Run Complete Check</button>
+    
+    <div id="results"></div>
+    
+    <div id="summary"></div>
+    
+    <div id="errorDetails" class="code"></div>
+  </div>
+
+  <script>
+    const CONTRACTS = {
+      RoleManager: "0x2f208c050Ed931c31DeDAA80CD4329224B2c748E",
+      RestaurantRegistry: "0x13f14FbE548742f1544BB44A9ad3714F93A02DF3",
+      RiderRegistry: "0x2a8F6e0E27E1160F603E90B267a2De7dAc9432F7",
+      Escrow: "0xe1A88562C2AF4913cFEaD16105eD51996f11cE6d",
+      OrderManager: "0xdd938211EFbfe6374DDD475C76C0fd10Acde7EB3",
+    };
+
+    let provider;
+    let address;
+
+    function addCheck(id, label, status = 'loading', details = '') {
+      const container = document.getElementById('results');
+      const existing = document.getElementById(id);
+      
+      const icons = {
+        loading: '⏳',
+        success: '✅',
+        error: '❌',
+        warning: '⚠️'
+      };
+      
+      const html = `
+        <div id="${id}" class="check-item ${status}">
+          <div class="icon">${icons[status]}</div>
+          <div class="content">
+            <div class="label">${label}</div>
+            ${details ? `<div class="details">${details}</div>` : ''}
+          </div>
+        </div>
+      `;
+      
+      if (existing) {
+        existing.outerHTML = html;
+      } else {
+        container.innerHTML += html;
+      }
+    }
+
+    async function runDiagnostics() {
+      document.getElementById('runBtn').disabled = true;
+      document.getElementById('results').innerHTML = '';
+      document.getElementById('summary').innerHTML = '';
+      document.getElementById('errorDetails').classList.remove('show');
+      
+      const checks = [];
+      
+      try {
+        // Check 1: MetaMask installed
+        addCheck('check1', '1. MetaMask Installation', 'loading');
+        if (typeof window.ethereum === 'undefined') {
+          addCheck('check1', '1. MetaMask Installation', 'error', 'MetaMask not detected. Please install MetaMask.');
+          return;
+        }
+        addCheck('check1', '1. MetaMask Installation', 'success', 'MetaMask detected');
+        checks.push({ name: 'MetaMask', status: 'success' });
+        
+        // Check 2: Network
+        addCheck('check2', '2. Network Configuration', 'loading');
+        const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+        if (chainId !== '0xaa36a7') {
+          addCheck('check2', '2. Network Configuration', 'error', `Wrong network (${chainId}). Please switch to Sepolia (0xaa36a7)`);
+          checks.push({ name: 'Network', status: 'error' });
+          return;
+        }
+        addCheck('check2', '2. Network Configuration', 'success', 'Connected to Sepolia testnet');
+        checks.push({ name: 'Network', status: 'success' });
+        
+        // Check 3: Connected account
+        addCheck('check3', '3. Wallet Connection', 'loading');
+        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        if (!accounts || accounts.length === 0) {
+          await window.ethereum.request({ method: 'eth_requestAccounts' });
+          const newAccounts = await window.ethereum.request({ method: 'eth_accounts' });
+          address = newAccounts[0];
+        } else {
+          address = accounts[0];
+        }
+        addCheck('check3', '3. Wallet Connection', 'success', address);
+        checks.push({ name: 'Wallet', status: 'success' });
+        
+        // Initialize provider
+        provider = new ethers.providers.Web3Provider(window.ethereum);
+        
+        // Check 4: Balance
+        addCheck('check4', '4. Wallet Balance', 'loading');
+        const balance = await provider.getBalance(address);
+        const balanceEth = parseFloat(ethers.utils.formatEther(balance));
+        if (balanceEth < 0.015) {
+          addCheck('check4', '4. Wallet Balance', 'warning', `${balanceEth.toFixed(4)} ETH (need at least 0.015 ETH)`);
+          checks.push({ name: 'Balance', status: 'warning' });
+        } else {
+          addCheck('check4', '4. Wallet Balance', 'success', `${balanceEth.toFixed(4)} ETH`);
+          checks.push({ name: 'Balance', status: 'success' });
+        }
+        
+        // Check 5: Contracts deployed
+        addCheck('check5', '5. Contract Deployment', 'loading');
+        let allDeployed = true;
+        for (const [name, addr] of Object.entries(CONTRACTS)) {
+          const code = await provider.getCode(addr);
+          if (code === '0x') {
+            addCheck('check5', '5. Contract Deployment', 'error', `${name} not found at ${addr}`);
+            allDeployed = false;
+            checks.push({ name: 'Contracts', status: 'error' });
+            break;
+          }
+        }
+        if (allDeployed) {
+          addCheck('check5', '5. Contract Deployment', 'success', 'All 5 contracts deployed');
+          checks.push({ name: 'Contracts', status: 'success' });
+        }
+        
+        // Check 6: User role
+        addCheck('check6', '6. User Role', 'loading');
+        const roleManagerAbi = ['function getUserRole(address) view returns (string)'];
+        const roleManager = new ethers.Contract(CONTRACTS.RoleManager, roleManagerAbi, provider);
+        const role = await roleManager.getUserRole(address);
+        if (role === 'Restaurant' || role === 'Rider') {
+          addCheck('check6', '6. User Role', 'warning', `Current role: ${role} (cannot place orders with this role)`);
+          checks.push({ name: 'Role', status: 'warning' });
+        } else {
+          addCheck('check6', '6. User Role', 'success', `Current role: ${role || 'None'} (can place orders)`);
+          checks.push({ name: 'Role', status: 'success' });
+        }
+        
+        // Check 7: Restaurant exists
+        addCheck('check7', '7. Restaurant Data', 'loading');
+        const restaurantAbi = ['function getRestaurant(uint256) view returns (tuple(address owner, string name, string description, string ipfsMenuHash, string metadataURI, string physicalAddress, bool isActive, uint256 registeredAt, uint256 totalOrders, uint256 totalRating, uint256 ratingCount))'];
+        const restaurantRegistry = new ethers.Contract(CONTRACTS.RestaurantRegistry, restaurantAbi, provider);
+        
+        try {
+          const restaurant = await restaurantRegistry.getRestaurant(1);
+          if (!restaurant.isActive) {
+            addCheck('check7', '7. Restaurant Data', 'warning', `Restaurant "${restaurant.name}" is closed`);
+            checks.push({ name: 'Restaurant', status: 'warning' });
+          } else {
+            addCheck('check7', '7. Restaurant Data', 'success', `Restaurant "${restaurant.name}" is open`);
+            checks.push({ name: 'Restaurant', status: 'success' });
+          }
+        } catch (error) {
+          addCheck('check7', '7. Restaurant Data', 'error', 'No restaurants registered yet');
+          checks.push({ name: 'Restaurant', status: 'error' });
+        }
+        
+        // Check 8: Gas estimation
+        addCheck('check8', '8. Gas Estimation', 'loading');
+        const orderManagerAbi = ['function createOrder(uint256,string,string,string,uint256) payable returns (uint256)'];
+        const orderManager = new ethers.Contract(CONTRACTS.OrderManager, orderManagerAbi, provider.getSigner());
+        
+        try {
+          const gasEstimate = await orderManager.estimateGas.createOrder(
+            1,
+            "QmTest123",
+            "123 Test Street",
+            "+1234567890",
+            0,
+            { value: ethers.utils.parseEther("0.01"), from: address }
+          );
+          const gas = gasEstimate.toNumber();
+          if (gas > 500000) {
+            addCheck('check8', '8. Gas Estimation', 'warning', `${gas.toLocaleString()} gas (higher than expected)`);
+            checks.push({ name: 'Gas', status: 'warning' });
+          } else {
+            addCheck('check8', '8. Gas Estimation', 'success', `${gas.toLocaleString()} gas (normal)`);
+            checks.push({ name: 'Gas', status: 'success' });
+          }
+        } catch (error) {
+          addCheck('check8', '8. Gas Estimation', 'error', `Failed: ${error.reason || error.message}`);
+          checks.push({ name: 'Gas', status: 'error' });
+          
+          // Show error details
+          const errorDiv = document.getElementById('errorDetails');
+          errorDiv.textContent = `Error Details:\n\n${JSON.stringify(error, null, 2)}`;
+          errorDiv.classList.add('show');
+        }
+        
+        // Generate summary
+        generateSummary(checks);
+        
+      } catch (error) {
+        console.error('Diagnostic error:', error);
+        addCheck('error', 'Unexpected Error', 'error', error.message);
+      } finally {
+        document.getElementById('runBtn').disabled = false;
+      }
+    }
+
+    function generateSummary(checks) {
+      const summary = document.getElementById('summary');
+      const successCount = checks.filter(c => c.status === 'success').length;
+      const warningCount = checks.filter(c => c.status === 'warning').length;
+      const errorCount = checks.filter(c => c.status === 'error').length;
+      
+      let message = '';
+      let color = '';
+      
+      if (errorCount > 0) {
+        message = '❌ Critical issues found. Please fix errors before testing.';
+        color = '#dc3545';
+      } else if (warningCount > 0) {
+        message = '⚠️ Some warnings detected. System may work with limitations.';
+        color = '#ffc107';
+      } else {
+        message = '✅ All checks passed! Your system is ready to use.';
+        color = '#28a745';
+      }
+      
+      summary.innerHTML = `
+        <div class="summary">
+          <h2 style="color: ${color}">${message}</h2>
+          <div class="summary-item">
+            <span>✅ Passed:</span>
+            <span><strong>${successCount}/${checks.length}</strong></span>
+          </div>
+          <div class="summary-item">
+            <span>⚠️ Warnings:</span>
+            <span><strong>${warningCount}</strong></span>
+          </div>
+          <div class="summary-item">
+            <span>❌ Errors:</span>
+            <span><strong>${errorCount}</strong></span>
+          </div>
+          ${errorCount === 0 && warningCount === 0 ? `
+            <div style="margin-top: 20px; padding: 15px; background: #d4edda; border-radius: 8px; border-left: 4px solid #28a745;">
+              <strong>🎉 Ready to test!</strong><br>
+              You can now create orders with an estimated gas cost of ~220,000 gas (~$4 at current prices).
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+  </script>
+</body>
+</html>
+

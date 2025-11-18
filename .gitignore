@@ -26,7 +26,3 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
-
-# Contract addresses and sensitive info
-CONTRACT_ADDRESSES.txt
-contracts/Addresses.rtf
