@@ -16,12 +16,12 @@ export function useRestaurantCount() {
     abi: RESTAURANT_REGISTRY_ABI,
     functionName: 'restaurantCount',
     query: {
-      staleTime: 0,
-      gcTime: 1000 * 30, // keep cache 30s
+      staleTime: 30000, // Cache for 30 seconds
+      gcTime: 1000 * 60, // keep cache 60s
       refetchOnMount: true,
-      refetchOnReconnect: true,
-      refetchOnWindowFocus: true,
-      refetchInterval: 10000, // poll every 10s
+      refetchOnReconnect: false, // Don't refetch on reconnect
+      refetchOnWindowFocus: false, // Don't refetch when window gains focus
+      // Removed refetchInterval - no automatic polling
     },
   });
 
@@ -50,12 +50,12 @@ export function useRestaurantIdByOwner(ownerAddress) {
     args: ownerAddress ? [ownerAddress] : undefined,
     query: {
       enabled: !!ownerAddress,
-      staleTime: 0,
-      gcTime: 1000 * 30,
+      staleTime: 30000, // Cache for 30 seconds
+      gcTime: 1000 * 60,
       refetchOnMount: true,
-      refetchOnReconnect: true,
-      refetchOnWindowFocus: true,
-      refetchInterval: 10000,
+      refetchOnReconnect: false,
+      refetchOnWindowFocus: false,
+      // Removed refetchInterval
     },
   });
 
@@ -83,11 +83,12 @@ export function useRestaurant(restaurantId) {
     args: restaurantId ? [restaurantId] : undefined,
     query: {
       enabled: !!restaurantId && restaurantId > 0,
-      staleTime: 0,
-      gcTime: 1000 * 30,
+      staleTime: 30000, // Cache for 30 seconds
+      gcTime: 1000 * 60,
       refetchOnMount: true,
-      refetchOnReconnect: true,
-      refetchOnWindowFocus: true,
+      refetchOnReconnect: false,
+      refetchOnWindowFocus: false,
+      // Removed refetchInterval
     },
   });
 

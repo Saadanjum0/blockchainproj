@@ -72,6 +72,7 @@ function CreateOrderPage() {
     const fetchMenu = async () => {
       if (!restaurant || !restaurant.ipfsMenuHash) {
         setMenuLoading(false);
+        setMenuError('No menu hash available');
         return;
       }
       
@@ -80,31 +81,35 @@ function CreateOrderPage() {
       try {
         setMenuLoading(true);
         setMenuError(null);
+        setCart([]); // Reset cart
         
         // Try to fetch from IPFS
         const menuData = await fetchFromIPFS(restaurant.ipfsMenuHash);
         
         console.log('Menu data fetched:', menuData);
         
-        if (menuData && menuData.items && Array.isArray(menuData.items)) {
+        if (menuData && menuData.items && Array.isArray(menuData.items) && menuData.items.length > 0) {
           // Convert menu items to cart format
           const cartItems = menuData.items.map((item, index) => ({
             id: index + 1,
-            name: item.name,
-            price: parseFloat(item.price),
+            name: item.name || 'Unnamed Item',
+            price: parseFloat(item.price) || 0,
             quantity: 0,
           }));
           
           console.log('Cart items created:', cartItems);
           setCart(cartItems);
+          setMenuError(null); // Clear any previous errors
         } else {
-          // Fallback to default menu if IPFS fails
-          console.warn('Invalid menu data from IPFS:', menuData);
-          setMenuError('Unable to load restaurant menu from IPFS');
+          // Invalid menu data
+          console.warn('Invalid or empty menu data from IPFS:', menuData);
+          setMenuError('Restaurant menu is empty or invalid. The restaurant owner needs to add menu items.');
+          setCart([]);
         }
       } catch (error) {
         console.error('Error fetching menu from IPFS:', error);
-        setMenuError(`Unable to load restaurant menu: ${error.message}`);
+        setMenuError(`Unable to load restaurant menu: ${error.message || 'Unknown error'}. The restaurant may not have set up their menu yet.`);
+        setCart([]);
       } finally {
         setMenuLoading(false);
       }

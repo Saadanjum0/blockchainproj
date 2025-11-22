@@ -1,8 +1,9 @@
 import { useAccount } from 'wagmi';
 import { Link } from 'react-router-dom';
-import { Package, Clock, CheckCircle } from 'lucide-react';
+import { Package, Clock, CheckCircle, ExternalLink } from 'lucide-react';
 import { useCustomerOrders, useOrder } from '../hooks/useOrders';
 import { getOrderStatusName } from '../contracts/abis';
+import { NETWORK_CONFIG } from '../contracts/addresses';
 import { formatEther } from 'viem';
 import { formatDate, formatTime } from '../utils/formatDate';
 
@@ -98,7 +99,7 @@ function OrderCard({ orderId }) {
         </span>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-4 text-sm">
+      <div className="grid md:grid-cols-3 gap-4 text-sm mb-3">
         <div>
           <p className="text-gray-600">Amount</p>
           <p className="font-semibold">{parseFloat(amount).toFixed(4)} ETH</p>
@@ -115,6 +116,11 @@ function OrderCard({ orderId }) {
             {formatTime(order.createdAt)}
           </p>
         </div>
+      </div>
+
+      <div className="flex items-center gap-2 text-xs text-gray-500 hover:text-blue-600 transition-colors">
+        <ExternalLink className="w-3 h-3" />
+        <span>View order details for Etherscan transaction links</span>
       </div>
 
       {order.status === 4 && (

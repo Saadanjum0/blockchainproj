@@ -26,12 +26,12 @@ export function useOrder(orderId) {
     args: [orderId],
     enabled: !!orderId && orderId > 0,
     query: {
-      staleTime: 0, // Always consider data stale, refetch immediately
-      gcTime: 1000 * 30, // Keep in cache for 30 seconds
+      staleTime: 15000, // Cache for 15 seconds
+      gcTime: 1000 * 60, // Keep in cache for 60 seconds
       refetchOnMount: true,
-      refetchOnReconnect: true,
-      refetchOnWindowFocus: true,
-      // Don't auto-poll by default, but allow manual refetch
+      refetchOnReconnect: false,
+      refetchOnWindowFocus: false,
+      // Manual refetch only when needed
     },
   });
 
@@ -71,12 +71,12 @@ export function useRestaurantOrders(restaurantId) {
     args: [restaurantId],
     enabled: !!restaurantId && restaurantId > 0,
     query: {
-      staleTime: 0, // Always refetch
-      gcTime: 1000 * 30, // Keep in cache for 30 seconds
+      staleTime: 20000, // Cache for 20 seconds
+      gcTime: 1000 * 60, // Keep in cache for 60 seconds
       refetchOnMount: true,
-      refetchOnReconnect: true,
-      refetchOnWindowFocus: true,
-      refetchInterval: 10000, // Poll every 10 seconds
+      refetchOnReconnect: false,
+      refetchOnWindowFocus: false,
+      // Removed automatic polling - use manual refresh button instead
     },
   });
 

@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
-import { useAccount } from 'wagmi';
+import { useState, useEffect, useCallback } from 'react';
+import { useAccount, useReadContract } from 'wagmi';
 import { Link } from 'react-router-dom';
-import { Store, Upload, ToggleLeft, ToggleRight, Package, ImagePlus, ExternalLink, Clock, User, MapPin } from 'lucide-react';
+import { Store, Upload, ToggleLeft, ToggleRight, Package, ImagePlus, ExternalLink, Clock, User, MapPin, DollarSign, TrendingUp, CheckCircle } from 'lucide-react';
 import { 
   useRestaurant,
   useRestaurantIdByOwner,
@@ -13,8 +13,8 @@ import { useOrderCount, useOrder, useRestaurantOrders } from '../hooks/useOrders
 import { useAcceptOrder, useMarkPrepared, useAssignRider } from '../hooks/useOrders';
 import { useAvailableRiders } from '../hooks/useRiders';
 import { createRestaurantMetadata, createMenuData, fetchFromIPFS } from '../utils/ipfs';
-import { getOrderStatusName } from '../contracts/abis';
-import { NETWORK_CONFIG } from '../contracts/addresses';
+import { getOrderStatusName, ESCROW_ABI } from '../contracts/abis';
+import { NETWORK_CONFIG, CONTRACTS } from '../contracts/addresses';
 import { formatDateTime, getTimeAgo } from '../utils/formatDate';
 import { formatEther } from 'viem';
 
@@ -87,9 +87,10 @@ function RestaurantDashboard({ onBack }) {
         </Link>
       </div>
       
-      <div className="grid md:grid-cols-2 gap-6 mb-6">
+      <div className="grid md:grid-cols-3 gap-6 mb-6">
         <RestaurantInfo restaurant={restaurant} restaurantId={myRestaurantId} />
         <RestaurantStats restaurant={restaurant} />
+        <RestaurantEarnings restaurantId={myRestaurantId} restaurantAddress={address} />
       </div>
 
       <MenuManager restaurantId={myRestaurantId} currentMenuHash={restaurant?.ipfsMenuHash} />
@@ -394,6 +395,160 @@ function RestaurantStats({ restaurant }) {
   );
 }
 
+// Helper component to fetch individual order data and contribute to earnings calculation
+function OrderEarningsCalculator({ orderId, onOrderProcessed }) {
+  const { order } = useOrder(orderId);
+
+  useEffect(() => {
+    if (order && order.amount) {
+      const amount = Number(formatEther(order.amount));
+      const restaurantShare = amount * 0.8; // 80% to restaurant
+      const status = order.status;
+      
+      onOrderProcessed({
+        status,
+        restaurantShare,
+        orderId: Number(orderId)
+      });
+    }
+  }, [order, orderId, onOrderProcessed]);
+
+  return null; // This is a data-only component
+}
+
+function RestaurantEarnings({ restaurantId, restaurantAddress }) {
+  const { orderIds, isFetched } = useRestaurantOrders(restaurantId);
+  const [totalEarnings, setTotalEarnings] = useState(0);
+  const [completedOrders, setCompletedOrders] = useState(0);
+  const [pendingEarnings, setPendingEarnings] = useState(0);
+  const [processedOrders, setProcessedOrders] = useState(new Map());
+
+  // CRITICAL FIX #1: Reset all state when restaurantId changes (wallet switch or disconnect)
+  useEffect(() => {
+    console.log('Restaurant ID changed, resetting earnings state');
+    setTotalEarnings(0);
+    setCompletedOrders(0);
+    setPendingEarnings(0);
+    setProcessedOrders(new Map());
+  }, [restaurantId]);
+
+  // CRITICAL FIX #2: Clean up stale orders from Map when orderIds changes
+  // If an order is cancelled/removed, its data must be purged from the Map
+  useEffect(() => {
+    if (!isFetched || !orderIds) return;
+
+    setProcessedOrders(prev => {
+      // Create Set of current order IDs for O(1) lookup
+      const currentOrderIds = new Set(orderIds.map(id => Number(id)));
+      
+      // Filter out orders that no longer exist in orderIds
+      const cleanedMap = new Map();
+      prev.forEach((orderData, orderId) => {
+        if (currentOrderIds.has(orderId)) {
+          cleanedMap.set(orderId, orderData);
+        } else {
+          console.log(`Removing stale order ${orderId} from earnings calculation`);
+        }
+      });
+      
+      // Only update if something changed to avoid infinite loops
+      if (cleanedMap.size !== prev.size) {
+        return cleanedMap;
+      }
+      return prev;
+    });
+  }, [orderIds, isFetched]);
+
+  // Callback to handle individual order data
+  const handleOrderProcessed = useCallback((orderData) => {
+    setProcessedOrders(prev => {
+      const newMap = new Map(prev);
+      newMap.set(orderData.orderId, orderData);
+      return newMap;
+    });
+  }, []);
+
+  // Calculate totals whenever processed orders change
+  useEffect(() => {
+    if (!isFetched || processedOrders.size === 0) return;
+
+    let totalCompleted = 0;
+    let countCompleted = 0;
+    let totalPending = 0;
+
+    processedOrders.forEach((orderData) => {
+      if (orderData.status === 5) { // Completed
+        totalCompleted += orderData.restaurantShare;
+        countCompleted++;
+      } else if (orderData.status >= 1 && orderData.status < 5) { // In progress
+        totalPending += orderData.restaurantShare;
+      }
+    });
+
+    setTotalEarnings(totalCompleted);
+    setCompletedOrders(countCompleted);
+    setPendingEarnings(totalPending);
+  }, [processedOrders, isFetched]);
+
+  return (
+    <>
+      {/* Hidden components that fetch and process order data */}
+      {isFetched && orderIds.map(orderId => (
+        <OrderEarningsCalculator
+          key={orderId.toString()}
+          orderId={orderId}
+          onOrderProcessed={handleOrderProcessed}
+        />
+      ))}
+      
+      <div className="card bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+        <div className="flex items-center gap-2 mb-4">
+          <DollarSign className="w-5 h-5 text-green-600" />
+          <h3 className="text-lg font-semibold text-green-900">Earnings</h3>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <p className="text-sm text-green-700 mb-1">Total Earned</p>
+            <div className="flex items-baseline gap-2">
+              <p className="text-2xl font-bold text-green-900">
+                {totalEarnings.toFixed(4)} ETH
+              </p>
+              <CheckCircle className="w-5 h-5 text-green-600" />
+            </div>
+            <p className="text-xs text-green-600 mt-1">
+              ≈ ${(totalEarnings * 3000).toFixed(2)} USD
+            </p>
+          </div>
+          <div className="pt-3 border-t border-green-200">
+            <p className="text-xs text-green-700 mb-1">Completed Orders</p>
+            <p className="text-lg font-semibold text-green-900">{completedOrders}</p>
+          </div>
+          {pendingEarnings > 0 && (
+            <div className="pt-2 border-t border-green-200">
+              <p className="text-xs text-green-700 mb-1 flex items-center gap-1">
+                <TrendingUp className="w-3 h-3" />
+                Pending Orders
+              </p>
+              <p className="text-sm font-semibold text-green-800">
+                {pendingEarnings.toFixed(4)} ETH
+              </p>
+            </div>
+          )}
+        </div>
+        <a
+          href={`${NETWORK_CONFIG.blockExplorer}/address/${restaurantAddress}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 flex items-center justify-center gap-2 text-xs text-green-700 hover:text-green-900 hover:underline transition-colors"
+        >
+          <ExternalLink className="w-3 h-3" />
+          View Wallet on Etherscan
+        </a>
+      </div>
+    </>
+  );
+}
+
 function MenuManager({ restaurantId, currentMenuHash }) {
   const [isEditing, setIsEditing] = useState(false);
   const [menuItems, setMenuItems] = useState([]);
@@ -590,16 +745,8 @@ function RestaurantOrders({ restaurantId, restaurantOwner }) {
   // Use the proper hook to get restaurant orders
   const { orderIds, isLoading, isFetched, refetch } = useRestaurantOrders(restaurantId);
 
-  // Auto-refetch every 10 seconds to keep orders updated
-  useEffect(() => {
-    if (restaurantId && isFetched) {
-      const interval = setInterval(() => {
-        refetch();
-      }, 10000); // Refetch every 10 seconds
-
-      return () => clearInterval(interval);
-    }
-  }, [restaurantId, isFetched, refetch]);
+  // Removed automatic polling - users can use the refresh button instead
+  // This prevents constant page refreshing and improves performance
 
   return (
     <div className="card">
@@ -840,11 +987,20 @@ function RestaurantOrderCard({ orderId, restaurantId, restaurantOwner, onUpdate 
                acceptSuccess ? '✅ Order Accepted!' :
                '✅ Accept Order'}
         </button>
-            {acceptSuccess && (
+            {acceptSuccess && acceptHash && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-2">
-                <p className="text-xs text-green-800">
+                <p className="text-xs text-green-800 mb-1">
                   ✅ Transaction confirmed! Updating order status...
                 </p>
+                <a 
+                  href={`${NETWORK_CONFIG.blockExplorer}/tx/${acceptHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  View on Etherscan
+                </a>
               </div>
             )}
           </div>
@@ -867,11 +1023,20 @@ function RestaurantOrderCard({ orderId, restaurantId, restaurantOwner, onUpdate 
                preparedSuccess ? '✅ Marked as Prepared!' :
                '🍳 Mark as Prepared'}
         </button>
-            {preparedSuccess && (
+            {preparedSuccess && preparedHash && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-2">
-                <p className="text-xs text-green-800">
+                <p className="text-xs text-green-800 mb-1">
                   ✅ Transaction confirmed! Updating order status...
                 </p>
+                <a 
+                  href={`${NETWORK_CONFIG.blockExplorer}/tx/${preparedHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  View on Etherscan
+                </a>
               </div>
             )}
           </div>
@@ -899,11 +1064,20 @@ function RestaurantOrderCard({ orderId, restaurantId, restaurantOwner, onUpdate 
                  '🏍️ Assign Rider'}
         </button>
       )}
-            {assignSuccess && (
+            {assignSuccess && assignHash && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-2 mt-2">
-                <p className="text-xs text-green-800">
+                <p className="text-xs text-green-800 mb-1">
                   ✅ Transaction confirmed! Updating order status...
                 </p>
+                <a 
+                  href={`${NETWORK_CONFIG.blockExplorer}/tx/${assignHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  View on Etherscan
+                </a>
               </div>
             )}
           </div>

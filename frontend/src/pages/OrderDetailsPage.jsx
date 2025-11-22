@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAccount } from 'wagmi';
-import { ArrowLeft, Package, User, MapPin, Phone, Clock, CheckCircle, DollarSign } from 'lucide-react';
+import { ArrowLeft, Package, User, MapPin, Phone, Clock, CheckCircle, DollarSign, ExternalLink } from 'lucide-react';
 import { useOrder } from '../hooks/useOrders';
 import { useRestaurant } from '../hooks/useRestaurants';
 import { useConfirmDelivery } from '../hooks/useOrders';
@@ -9,7 +9,7 @@ import { getOrderStatusName } from '../contracts/abis';
 import { formatEther } from 'viem';
 import { formatDateTime, getTimeAgo } from '../utils/formatDate';
 import { fetchFromIPFS } from '../utils/ipfs';
-import { NETWORK_CONFIG } from '../contracts/addresses';
+import { NETWORK_CONFIG, CONTRACTS } from '../contracts/addresses';
 
 function OrderDetailsPage() {
   const { orderId } = useParams();
@@ -259,6 +259,9 @@ function OrderDetailsPage() {
               />
             </div>
           </div>
+
+          {/* Blockchain Transactions - Professional View */}
+          <BlockchainTransactionsView orderId={orderId} order={order} amount={amount} />
         </div>
 
         {/* Sidebar */}
@@ -380,6 +383,231 @@ function OrderDetailsPage() {
               )}
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BlockchainTransactionsView({ orderId, order, amount }) {
+  const restaurantShare = (parseFloat(amount) * 0.8).toFixed(4);
+  const riderShare = (parseFloat(amount) * 0.1).toFixed(4);
+  const platformShare = (parseFloat(amount) * 0.1).toFixed(4);
+
+  return (
+    <div className="card bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-bold text-blue-900 flex items-center gap-2">
+          🔗 Blockchain Transactions
+        </h2>
+        <a
+          href={`${NETWORK_CONFIG.blockExplorer}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+        >
+          <ExternalLink className="w-3 h-3" />
+          Etherscan
+        </a>
+      </div>
+
+      <div className="space-y-4">
+        {/* Smart Contract Addresses */}
+        <div className="bg-white rounded-lg p-4 border border-blue-200">
+          <p className="text-xs font-bold text-gray-700 mb-3">📄 Smart Contracts</p>
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600">OrderManager:</span>
+              <a
+                href={`${NETWORK_CONFIG.blockExplorer}/address/${CONTRACTS.OrderManager}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline font-mono flex items-center gap-1"
+              >
+                {CONTRACTS.OrderManager.slice(0, 6)}...{CONTRACTS.OrderManager.slice(-4)}
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600">Escrow Contract:</span>
+              <a
+                href={`${NETWORK_CONFIG.blockExplorer}/address/${CONTRACTS.Escrow}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline font-mono flex items-center gap-1"
+              >
+                {CONTRACTS.Escrow.slice(0, 6)}...{CONTRACTS.Escrow.slice(-4)}
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          </div>
+        </div>
+
+        {/* Payment Flow */}
+        <div className="bg-white rounded-lg p-4 border border-blue-200">
+          <p className="text-xs font-bold text-gray-700 mb-3">💰 Payment Flow</p>
+          
+          {/* Step 1: Customer Payment */}
+          <div className="mb-4 pb-4 border-b border-gray-200">
+            <div className="flex items-start gap-2 mb-2">
+              <div className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">1</div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-gray-900">Order Created</p>
+                <p className="text-xs text-gray-600 mt-1">Customer paid {amount} ETH</p>
+                <div className="mt-2 bg-blue-50 rounded p-2 text-xs">
+                  <p className="text-gray-700">
+                    <span className="font-mono text-blue-600">{order.customer.slice(0, 10)}...</span>
+                    {' → '}
+                    <span className="font-semibold">createOrder()</span>
+                    {' → '}
+                    <span className="font-mono text-green-600">Escrow</span>
+                  </p>
+                  <p className="text-gray-500 mt-1">
+                    Funds locked in escrow contract until delivery confirmed
+                  </p>
+                </div>
+              </div>
+            </div>
+            <a
+              href={`${NETWORK_CONFIG.blockExplorer}/address/${order.customer}?fromaddress=${CONTRACTS.OrderManager}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-blue-600 hover:underline flex items-center gap-1 ml-8"
+            >
+              <ExternalLink className="w-3 h-3" />
+              View customer's transactions on Etherscan
+            </a>
+          </div>
+
+          {/* Step 2: Order Processing */}
+          {order.status >= 1 && (
+            <div className="mb-4 pb-4 border-b border-gray-200">
+              <div className="flex items-start gap-2 mb-2">
+                <div className="w-6 h-6 rounded-full bg-yellow-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">2</div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-900">Order Processing</p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {order.status >= 1 && '✅ Restaurant accepted'}
+                    {order.status >= 2 && ' → ✅ Food prepared'}
+                    {order.status >= 3 && ' → ✅ Rider picked up'}
+                    {order.status >= 4 && ' → ✅ Delivered'}
+                  </p>
+                  <div className="mt-2 bg-yellow-50 rounded p-2 text-xs">
+                    <p className="text-gray-600">
+                      Each status change is recorded on-chain
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Payment Release */}
+          {order.status === 5 ? (
+            <div className="mb-2">
+              <div className="flex items-start gap-2 mb-2">
+                <div className="w-6 h-6 rounded-full bg-green-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">3</div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-green-900">Payment Released ✅</p>
+                  <p className="text-xs text-green-700 mt-1">Escrow distributed funds to all parties</p>
+                  <div className="mt-2 space-y-2">
+                    <div className="bg-green-50 rounded p-2 text-xs">
+                      <p className="text-gray-700 font-semibold mb-1">Distribution:</p>
+                      <p className="text-gray-600">
+                        🏪 Restaurant: <span className="font-mono text-green-600">{restaurantShare} ETH</span>
+                      </p>
+                      <p className="text-gray-600">
+                        🏍️ Rider: <span className="font-mono text-green-600">{riderShare} ETH</span>
+                      </p>
+                      <p className="text-gray-600">
+                        ⚡ Platform: <span className="font-mono text-green-600">{platformShare} ETH</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <a
+                href={`${NETWORK_CONFIG.blockExplorer}/address/${CONTRACTS.Escrow}#internaltx`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-green-600 hover:underline flex items-center gap-1 ml-8"
+              >
+                <ExternalLink className="w-3 h-3" />
+                View escrow internal transactions (payment distribution)
+              </a>
+            </div>
+          ) : (
+            <div className="mb-2">
+              <div className="flex items-start gap-2">
+                <div className="w-6 h-6 rounded-full bg-gray-300 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">3</div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-700">Payment Release</p>
+                  <p className="text-xs text-gray-600 mt-1">Waiting for order completion</p>
+                  <div className="mt-2 bg-gray-50 rounded p-2 text-xs">
+                    <p className="text-gray-600">
+                      🔒 {amount} ETH held securely in escrow
+                    </p>
+                    <p className="text-gray-500 mt-1">
+                      Will be released when customer confirms delivery
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Quick Links */}
+        <div className="bg-white rounded-lg p-4 border border-blue-200">
+          <p className="text-xs font-bold text-gray-700 mb-3">🔍 Track on Etherscan</p>
+          <div className="space-y-2">
+            <a
+              href={`${NETWORK_CONFIG.blockExplorer}/address/${CONTRACTS.Escrow}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-2 p-2 bg-blue-50 rounded transition-colors"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <div className="flex-1">
+                <p className="font-semibold">View Escrow Contract</p>
+                <p className="text-gray-600">See all escrow transactions and balance</p>
+              </div>
+            </a>
+            <a
+              href={`${NETWORK_CONFIG.blockExplorer}/address/${CONTRACTS.Escrow}#internaltx`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-2 p-2 bg-blue-50 rounded transition-colors"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <div className="flex-1">
+                <p className="font-semibold">View Internal Transactions</p>
+                <p className="text-gray-600">See payments from escrow to restaurants & riders</p>
+              </div>
+            </a>
+            <a
+              href={`${NETWORK_CONFIG.blockExplorer}/address/${order.customer}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-2 p-2 bg-blue-50 rounded transition-colors"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <div className="flex-1">
+                <p className="font-semibold">View Customer Wallet</p>
+                <p className="text-gray-600">See all customer transactions</p>
+              </div>
+            </a>
+          </div>
+        </div>
+
+        {/* Educational Note */}
+        <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-3 border border-purple-200">
+          <p className="text-xs font-semibold text-purple-900 mb-1">💡 How It Works</p>
+          <p className="text-xs text-purple-700">
+            All payments are held in a secure escrow smart contract. When you confirm delivery, 
+            the contract automatically distributes funds: 80% to restaurant, 10% to rider, 10% platform fee. 
+            Every transaction is recorded permanently on the Ethereum blockchain and can be verified on Etherscan.
+          </p>
         </div>
       </div>
     </div>
