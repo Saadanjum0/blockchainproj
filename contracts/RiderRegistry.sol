@@ -1,7 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-contract RiderRegistry {
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+interface IRoleManager {
+    function hasNoRole(address _user) external view returns (bool);
+    function canRegisterAsRider(address _user) external view returns (bool);
+    function assignRiderRole(address _user) external;
+    function isRider(address _user) external view returns (bool);
+}
+
+contract RiderRegistry is Ownable, ReentrancyGuard {
     
     struct Rider {
         address riderAddress;
@@ -19,7 +29,7 @@ contract RiderRegistry {
         uint256 currentOrderId;
     }
 
-    address public owner;
+    IRoleManager public roleManager;
     address public orderManager;
     
     mapping(address => Rider) public riders;
@@ -32,27 +42,14 @@ contract RiderRegistry {
     event RiderAssignedToOrder(address indexed rider, uint256 indexed orderId);
     event RiderCompletedDelivery(address indexed rider, uint256 indexed orderId);
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Not owner");
-        _;
-    }
-
     modifier onlyOrderManager() {
         require(msg.sender == orderManager, "Not authorized");
         _;
     }
 
-    // Reentrancy guard - simple implementation without OpenZeppelin
-    bool private locked;
-    modifier nonReentrant() {
-        require(!locked, "Reentrant call");
-        locked = true;
-        _;
-        locked = false;
-    }
-
-    constructor() {
-        owner = msg.sender;
+    constructor(address _roleManager) Ownable(msg.sender) {
+        require(_roleManager != address(0), "Invalid RoleManager address");
+        roleManager = IRoleManager(_roleManager);
     }
     
     function setOrderManager(address _orderManager) external onlyOwner {
@@ -69,6 +66,10 @@ contract RiderRegistry {
         string memory _vehicleType,
         string memory _metadataURI
     ) external nonReentrant {
+        // CRITICAL FIX: Role isolation check
+        require(roleManager.canRegisterAsRider(msg.sender), 
+            "Cannot register: Address already has another role");
+        
         require(!isRegistered[msg.sender], "Already registered");
         require(bytes(_name).length > 0, "Name required");
         require(bytes(_vehicleType).length > 0, "Vehicle type required");
@@ -87,6 +88,10 @@ contract RiderRegistry {
 
         isRegistered[msg.sender] = true;
         riderList.push(msg.sender);
+
+        // CRITICAL FIX: Assign rider role - WILL FAIL if RiderRegistry is not authorized in RoleManager
+        // After deployment, make sure to call RoleManager.authorizeContract(riderRegistryAddress)
+        roleManager.assignRiderRole(msg.sender);
 
         emit RiderRegistered(msg.sender, _name, _vehicleType);
     }

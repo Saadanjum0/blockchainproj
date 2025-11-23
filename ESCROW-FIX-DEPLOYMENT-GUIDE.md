@@ -6,6 +6,20 @@
 
 **Solution**: Added `updateRider()` function to Escrow contract and call it when a rider is assigned.
 
+## ⚠️ CRITICAL: RiderRegistry Now Requires RoleManager
+
+**IMPORTANT CHANGE**: `RiderRegistry` now integrates with `RoleManager` for role isolation (one wallet = one role).
+
+**What Changed:**
+- Constructor now requires `_roleManager` parameter: `constructor(address _roleManager)`
+- Added role checks in `registerRider()` function
+- Calls `roleManager.assignRiderRole()` after registration
+- Uses OpenZeppelin's `Ownable` and `ReentrancyGuard` instead of manual implementation
+
+**Impact:**
+- If you already deployed RiderRegistry WITHOUT RoleManager parameter, you need to **deploy a NEW RiderRegistry**
+- All riders will need to re-register (or migrate data)
+
 ## ⚠️ IMPORTANT: RestaurantRegistry Update Issue
 
 **Problem**: The `RestaurantRegistry` contract's `setOrderManager` function can only be called once. If you get "Already set" error, you need to use the new `updateOrderManager` function.
@@ -41,6 +55,14 @@
 ### 2. OrderManager.sol
 - ✅ Updated `IEscrow` interface to include `updateRider()`
 - ✅ Added call to `escrow.updateRider()` in `assignRider()` function (line ~279)
+
+### 3. RiderRegistry.sol (CRITICAL FIX)
+- ✅ Added `IRoleManager` interface
+- ✅ Added `roleManager` state variable
+- ✅ Updated constructor to accept `_roleManager` parameter
+- ✅ Added role check in `registerRider()`: `canRegisterAsRider()`
+- ✅ Added role assignment after registration: `assignRiderRole()`
+- ✅ Switched to OpenZeppelin's `Ownable` and `ReentrancyGuard`
 
 ## 🚀 Deployment Steps
 
@@ -98,22 +120,41 @@ If you have existing orders, you'll need to deploy new contracts and migrate dat
 
 **Example Escrow Address**: `0x[YOUR_NEW_ESCROW_ADDRESS]`
 
-#### **4.2 Deploy OrderManager Contract**
+#### **4.2 Deploy NEW RiderRegistry (REQUIRED - Contract Updated)**
+
+**⚠️ CRITICAL**: RiderRegistry now requires RoleManager parameter. You MUST deploy a new one!
+
+1. Select "RiderRegistry" from contract dropdown
+2. In constructor parameters:
+   - `_roleManager`: `0x2f208c050Ed931c31DeDAA80CD4329224B2c748E`
+3. Click "Deploy"
+4. **COPY THE CONTRACT ADDRESS** - You'll need this!
+5. Wait for deployment confirmation
+
+**Example RiderRegistry Address**: `0x[YOUR_NEW_RIDERREGISTRY_ADDRESS]`
+
+**⚠️ IMPORTANT**: 
+- Old RiderRegistry (`0x2a8F6e0E27E1160F603E90B267a2De7dAc9432F7`) did NOT have RoleManager
+- All riders will need to re-register with the new contract
+- After deploying, you MUST authorize it in RoleManager (see Step 5.3)
+
+#### **4.3 Deploy OrderManager Contract**
 
 1. Still in "Deploy & Run Transactions" tab
 2. Select "OrderManager" from contract dropdown
-3. In constructor parameters, use these **EXISTING contract addresses**:
+3. In constructor parameters:
 
 ```
 _restaurantRegistry: 0x13f14FbE548742f1544BB44A9ad3714F93A02DF3
-_riderRegistry: 0x2a8F6e0E27E1160F603E90B267a2De7dAc9432F7
+_riderRegistry: [YOUR_NEW_RIDERREGISTRY_ADDRESS from Step 4.2] ⚠️ USE NEW ADDRESS
 _escrow: [YOUR_NEW_ESCROW_ADDRESS from Step 4.1] ⚠️ USE NEW ADDRESS
 _roleManager: 0x2f208c050Ed931c31DeDAA80CD4329224B2c748E
 ```
 
 **⚠️ IMPORTANT**: 
-- Use the **NEW Escrow address** from Step 4.1 (not the old one)
-- Use the **EXISTING** addresses for RestaurantRegistry, RiderRegistry, and RoleManager
+- Use the **NEW Escrow address** from Step 4.1
+- Use the **NEW RiderRegistry address** from Step 4.2
+- Use the **EXISTING** addresses for RestaurantRegistry and RoleManager
 
 4. Click "Deploy"
 5. **COPY THE CONTRACT ADDRESS** - You'll need this!
@@ -174,10 +215,17 @@ _roleManager: 0x2f208c050Ed931c31DeDAA80CD4329224B2c748E
    - **Note**: RiderRegistry allows updating OrderManager multiple times, so this should work
 
 **On RoleManager (0x2f208c050Ed931c31DeDAA80CD4329224B2c748E):**
+
+**⚠️ CRITICAL**: You need to authorize BOTH OrderManager AND the new RiderRegistry!
+
 1. Compile `RoleManager.sol` in Remix
 2. Use "At Address" with: `0x2f208c050Ed931c31DeDAA80CD4329224B2c748E`
-3. Call `authorizeContract([NEW_ORDERMANAGER_ADDRESS from Step 4.2])`
+3. Call `authorizeContract([NEW_ORDERMANAGER_ADDRESS from Step 4.3])`
 4. Confirm transaction
+5. **ALSO** Call `authorizeContract([NEW_RIDERREGISTRY_ADDRESS from Step 4.2])`
+6. Confirm transaction
+
+**Why?** The new RiderRegistry calls `roleManager.assignRiderRole()` during registration. If RiderRegistry is not authorized, rider registration will FAIL!
 
 ### **Step 6: Update Frontend Configuration**
 
@@ -186,17 +234,18 @@ _roleManager: 0x2f208c050Ed931c31DeDAA80CD4329224B2c748E
 
 ```javascript
 export const CONTRACTS = {
-  RoleManager: "0x2f208c050Ed931c31DeDAA80CD4329224B2c748E",        // KEEP EXISTING
-  RestaurantRegistry: "0x13f14FbE548742f1544BB44A9ad3714F93A02DF3", // KEEP EXISTING
-  RiderRegistry: "0x2a8F6e0E27E1160F603E90B267a2De7dAc9432F7",       // KEEP EXISTING
-  Escrow: "0x[YOUR_NEW_ESCROW_ADDRESS from Step 4.1]",              // ⚠️ UPDATE THIS
-  OrderManager: "0x[YOUR_NEW_ORDERMANAGER_ADDRESS from Step 4.2]",   // ⚠️ UPDATE THIS
+  RoleManager: "0x2f208c050Ed931c31DeDAA80CD4329224B2c748E",             // KEEP EXISTING
+  RestaurantRegistry: "0x13f14FbE548742f1544BB44A9ad3714F93A02DF3",      // KEEP EXISTING
+  RiderRegistry: "0x[YOUR_NEW_RIDERREGISTRY_ADDRESS from Step 4.2]",     // ⚠️ UPDATE THIS
+  Escrow: "0x[YOUR_NEW_ESCROW_ADDRESS from Step 4.1]",                   // ⚠️ UPDATE THIS
+  OrderManager: "0x[YOUR_NEW_ORDERMANAGER_ADDRESS from Step 4.3]",       // ⚠️ UPDATE THIS
 };
 ```
 
 **Current OLD addresses (to be replaced):**
 - Old Escrow: `0xe1A88562C2AF4913cFEaD16105eD51996f11cE6d`
 - Old OrderManager: `0xdd938211EFbfe6374DDD475C76C0fd10Acde7EB3`
+- Old RiderRegistry: `0x2a8F6e0E27E1160F603E90B267a2De7dAc9432F7` (missing RoleManager integration)
 
 3. Save the file
 
@@ -285,19 +334,20 @@ export const CONTRACTS = {
 ```
 RoleManager: 0x2f208c050Ed931c31DeDAA80CD4329224B2c748E
 RestaurantRegistry: 0x13f14FbE548742f1544BB44A9ad3714F93A02DF3
-RiderRegistry: 0x2a8F6e0E27E1160F603E90B267a2De7dAc9432F7
 ```
 
 ### **OLD Contracts (To Be Replaced)**
 ```
 Old Escrow: 0xe1A88562C2AF4913cFEaD16105eD51996f11cE6d
 Old OrderManager: 0xdd938211EFbfe6374DDD475C76C0fd10Acde7EB3
+Old RiderRegistry: 0x2a8F6e0E27E1160F603E90B267a2De7dAc9432F7 (missing RoleManager)
 ```
 
 ### **NEW Contracts (Fill After Deployment)**
 ```
 New Escrow: 0x________________________________
 New OrderManager: 0x________________________________
+New RiderRegistry: 0x________________________________
 ```
 
 ### **After Deployment, Update addresses.js:**
@@ -305,9 +355,9 @@ New OrderManager: 0x________________________________
 export const CONTRACTS = {
   RoleManager: "0x2f208c050Ed931c31DeDAA80CD4329224B2c748E",
   RestaurantRegistry: "0x13f14FbE548742f1544BB44A9ad3714F93A02DF3",
-  RiderRegistry: "0x2a8F6e0E27E1160F603E90B267a2De7dAc9432F7",
-  Escrow: "0x[YOUR_NEW_ESCROW_ADDRESS]",           // ⚠️ UPDATE
-  OrderManager: "0x[YOUR_NEW_ORDERMANAGER_ADDRESS]", // ⚠️ UPDATE
+  RiderRegistry: "0x[YOUR_NEW_RIDERREGISTRY_ADDRESS]",     // ⚠️ UPDATE
+  Escrow: "0x[YOUR_NEW_ESCROW_ADDRESS]",                   // ⚠️ UPDATE
+  OrderManager: "0x[YOUR_NEW_ORDERMANAGER_ADDRESS]",       // ⚠️ UPDATE
 };
 ```
 
@@ -346,23 +396,31 @@ If you encounter issues:
 
 ### **Copy-Paste Ready Addresses**
 
+**For RiderRegistry Constructor:**
+```
+_roleManager: 0x2f208c050Ed931c31DeDAA80CD4329224B2c748E
+```
+
 **For OrderManager Constructor:**
 ```
 _restaurantRegistry: 0x13f14FbE548742f1544BB44A9ad3714F93A02DF3
-_riderRegistry: 0x2a8F6e0E27E1160F603E90B267a2De7dAc9432F7
+_riderRegistry: [YOUR_NEW_RIDERREGISTRY_ADDRESS]
 _escrow: [YOUR_NEW_ESCROW_ADDRESS]
 _roleManager: 0x2f208c050Ed931c31DeDAA80CD4329224B2c748E
 ```
 
 **For Linking Contracts:**
 ```
-RestaurantRegistry.setOrderManager([NEW_ORDERMANAGER])
+Escrow.setOrderManager([NEW_ORDERMANAGER])
+
+RestaurantRegistry.updateOrderManager([NEW_ORDERMANAGER])
 Address: 0x13f14FbE548742f1544BB44A9ad3714F93A02DF3
 
 RiderRegistry.setOrderManager([NEW_ORDERMANAGER])
-Address: 0x2a8F6e0E27E1160F603E90B267a2De7dAc9432F7
+Address: [YOUR_NEW_RIDERREGISTRY_ADDRESS]
 
 RoleManager.authorizeContract([NEW_ORDERMANAGER])
+RoleManager.authorizeContract([NEW_RIDERREGISTRY]) ⚠️ CRITICAL!
 Address: 0x2f208c050Ed931c31DeDAA80CD4329224B2c748E
 ```
 
@@ -371,9 +429,9 @@ Address: 0x2f208c050Ed931c31DeDAA80CD4329224B2c748E
 export const CONTRACTS = {
   RoleManager: "0x2f208c050Ed931c31DeDAA80CD4329224B2c748E",
   RestaurantRegistry: "0x13f14FbE548742f1544BB44A9ad3714F93A02DF3",
-  RiderRegistry: "0x2a8F6e0E27E1160F603E90B267a2De7dAc9432F7",
-  Escrow: "0x[YOUR_NEW_ESCROW]",           // ⚠️ FILL AFTER DEPLOYMENT
-  OrderManager: "0x[YOUR_NEW_ORDERMANAGER]", // ⚠️ FILL AFTER DEPLOYMENT
+  RiderRegistry: "0x[YOUR_NEW_RIDERREGISTRY]",    // ⚠️ FILL AFTER DEPLOYMENT
+  Escrow: "0x[YOUR_NEW_ESCROW]",                   // ⚠️ FILL AFTER DEPLOYMENT
+  OrderManager: "0x[YOUR_NEW_ORDERMANAGER]",       // ⚠️ FILL AFTER DEPLOYMENT
 };
 ```
 

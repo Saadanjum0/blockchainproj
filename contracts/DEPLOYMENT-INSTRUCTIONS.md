@@ -134,32 +134,51 @@ If you STILL get errors after enabling viaIR, try:
 
 ## 📝 Deployment Steps (After Compilation Success):
 
+**⚠️ CRITICAL CHANGE**: RiderRegistry now requires RoleManager parameter in constructor!
+
 1. **Compile** with viaIR enabled
 2. **Go to Deploy Tab** (4th icon on left)
 3. **Select Environment**: "Injected Provider - MetaMask"
 4. **Connect Wallet** → Select Sepolia testnet
 5. **Deploy**
    - Contract: `RiderRegistry`
-   - Constructor: Leave empty `()`
+   - Constructor: `_roleManager` - Enter your RoleManager address
+     - Example: `0x2f208c050Ed931c31DeDAA80CD4329224B2c748E`
    - Click "Deploy"
 6. **Confirm Transaction** in MetaMask
 7. **Copy Contract Address** from deployed contracts section
+
+**⚠️ IMPORTANT**: 
+- Old RiderRegistry had no constructor parameters - this is a BREAKING CHANGE
+- You MUST deploy a new RiderRegistry with RoleManager parameter
+- After deployment, you MUST authorize RiderRegistry in RoleManager (see below)
 
 ---
 
 ## 🔗 After Deployment:
 
-1. **Set OrderManager** (if needed):
+1. **Authorize RiderRegistry in RoleManager (CRITICAL!)**:
+   - Go to your RoleManager contract
+   - Call `authorizeContract` function
+   - Enter your NEW RiderRegistry address
+   - Confirm transaction
+   - ⚠️ **If you skip this, rider registration will FAIL!**
+   - Why? RiderRegistry calls `roleManager.assignRiderRole()` during registration
+
+2. **Set OrderManager** (after OrderManager is deployed):
    ```solidity
    riderRegistry.setOrderManager(0xOrderManagerAddress)
    ```
 
-2. **Update Frontend**:
+3. **Update Frontend**:
    Edit `frontend/src/contracts/addresses.js`:
    ```javascript
    export const CONTRACTS = {
-     RiderRegistry: "0xYOUR_DEPLOYED_ADDRESS",
-     // ... other contracts
+     RoleManager: "0x2f208c050Ed931c31DeDAA80CD4329224B2c748E",
+     RestaurantRegistry: "0x13f14FbE548742f1544BB44A9ad3714F93A02DF3",
+     RiderRegistry: "0xYOUR_NEW_DEPLOYED_ADDRESS",  // ⚠️ UPDATE THIS
+     Escrow: "0xYOUR_ESCROW_ADDRESS",
+     OrderManager: "0xYOUR_ORDERMANAGER_ADDRESS",
    };
    ```
 
@@ -195,9 +214,15 @@ If you STILL get errors after enabling viaIR, try:
 - Subsequent compilations are cached (faster)
 
 ### "Contract deployed but functions fail"
-- Check you deployed with correct constructor
+- Check you deployed with correct constructor (now requires RoleManager!)
 - Verify contract address in frontend
 - Make sure you're on Sepolia testnet
+- **CRITICAL**: Did you authorize RiderRegistry in RoleManager? Registration will fail if not authorized!
+
+### "Cannot register: Address already has another role"
+- This is CORRECT behavior! One wallet = one role only
+- If you're already a restaurant, you can't register as rider
+- Use a different wallet for each role
 
 ---
 
@@ -213,7 +238,13 @@ If you STILL get errors after enabling viaIR, try:
 
 ---
 
-**Last Updated:** November 15, 2025  
+**Last Updated:** January 2025  
 **Solidity Version:** 0.8.20  
-**Status:** ✅ Ready for Deployment (with viaIR)
+**Status:** ✅ Ready for Deployment (with viaIR + RoleManager integration)
+
+## ⚠️ BREAKING CHANGES:
+
+- **RiderRegistry constructor now requires `_roleManager` parameter**
+- **Must authorize RiderRegistry in RoleManager after deployment**
+- **Old RiderRegistry (without RoleManager) is deprecated - deploy new one**
 
