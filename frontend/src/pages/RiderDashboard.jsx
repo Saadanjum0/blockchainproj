@@ -99,12 +99,15 @@ function RegisterRiderForm({ onSuccess, onBack }) {
 
   useEffect(() => {
     if (isSuccess) {
-      // Mark this address as a rider
-      localStorage.setItem(`rider_${window.ethereum?.selectedAddress}`, 'true');
+      // Clear pending role since registration is complete
+      if (address) {
+        localStorage.removeItem(`pendingRole_${address}`);
+      }
+      
       alert('Rider registration successful! 🎉');
       setTimeout(() => onSuccess(), 2000);
     }
-  }, [isSuccess, onSuccess]);
+  }, [isSuccess, onSuccess, address]);
 
   return (
     <div className="max-w-2xl mx-auto">

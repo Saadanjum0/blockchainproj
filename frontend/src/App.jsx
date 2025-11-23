@@ -108,34 +108,56 @@ function AppContent() {
   // Persist actual blockchain role once detected
   // CRITICAL FIX: Clear localStorage if blockchain says 'none' but we have stored role
   // This handles the case when contracts are redeployed and old roles are cached
+  // BUT: Don't clear if user has pendingRole (they're in the process of registering)
   useEffect(() => {
     if (address) {
+      const pendingRole = localStorage.getItem(`pendingRole_${address}`);
+      
       if (role !== 'none') {
-        // Blockchain confirms a role - save it
+        // Blockchain confirms a role - save it and clear pending
         localStorage.setItem(`userRole_${address}`, role);
+        localStorage.removeItem(`pendingRole_${address}`); // Clear pending since they're now registered
         setStoredRole(role);
         setSelectedRole(role);
-      } else if (role === 'none' && !isLoading && storedRole) {
+      } else if (role === 'none' && !isLoading && storedRole && !pendingRole) {
         // Blockchain says no role, but we have stored role - clear it (contracts redeployed)
+        // BUT only if there's no pending registration
         console.log('Clearing stale role from localStorage - contracts may have been redeployed');
         localStorage.removeItem(`userRole_${address}`);
         setStoredRole(null);
         setSelectedRole(null);
       }
+      // If pendingRole exists, keep storedRole even if blockchain says 'none' (user is registering)
     }
   }, [address, role, isLoading, storedRole]);
 
   // Show role selection only if wallet truly has no role and nothing stored
-  // CRITICAL FIX: Also show if role is 'none' even if storedRole exists (after clearing)
+  // CRITICAL FIX: Don't show role selection if user just selected a role (pending registration)
   useEffect(() => {
-    if (isConnected && !isLoading && role === 'none' && !storedRole) {
-      setShowRoleSelection(true);
-    } else if (isConnected && !isLoading && role === 'none' && storedRole) {
-      // If we have stored role but blockchain says none, clear it and show selection
-      // This handles contract redeployment scenario
-      localStorage.removeItem(`userRole_${address}`);
-      setStoredRole(null);
-      setSelectedRole(null);
+    // If user just selected a role but hasn't registered yet, don't show selection again
+    const pendingRole = address ? localStorage.getItem(`pendingRole_${address}`) : null;
+    
+    console.log('Role selection check:', { 
+      isConnected, 
+      isLoading, 
+      role, 
+      storedRole, 
+      pendingRole,
+      address 
+    });
+    
+    // Don't show role selection if:
+    // 1. User has a blockchain role (already registered)
+    // 2. User has a stored role (selected but not registered yet)
+    // 3. User has a pending role (in process of registering)
+    if (role !== 'none' || storedRole || pendingRole) {
+      setShowRoleSelection(false);
+      return;
+    }
+    
+    // Only show role selection if user truly has no role anywhere
+    if (isConnected && !isLoading && role === 'none' && !storedRole && !pendingRole) {
+      console.log('Showing role selection screen');
       setShowRoleSelection(true);
     } else {
       setShowRoleSelection(false);
@@ -145,20 +167,38 @@ function AppContent() {
   const effectiveRole = role !== 'none' ? role : storedRole || 'none';
 
   const handleRoleSelection = (newRole) => {
+    console.log('handleRoleSelection called:', newRole, 'for address:', address);
+    
     if (address) {
+      // Mark as pending registration (user selected role but hasn't registered yet)
+      localStorage.setItem(`pendingRole_${address}`, newRole);
+      // Also store the selected role
       localStorage.setItem(`userRole_${address}`, newRole);
+      console.log('Saved to localStorage:', { pendingRole: newRole, userRole: newRole });
     }
+    
+    // Update state immediately
     setStoredRole(newRole);
     setSelectedRole(newRole);
     setShowRoleSelection(false);
     
+    console.log('State updated, navigating...');
+    
     // Navigate to appropriate registration page using React Router
+    // Use immediate navigation (no setTimeout needed)
     if (newRole === 'restaurant') {
-      navigate('/restaurant-dashboard');
+      console.log('Navigating to /restaurant-dashboard');
+      navigate('/restaurant-dashboard', { replace: true });
     } else if (newRole === 'rider') {
-      navigate('/rider-dashboard');
+      console.log('Navigating to /rider-dashboard');
+      navigate('/rider-dashboard', { replace: true });
     } else {
-      navigate('/');
+      // Customer doesn't need registration, just go to home
+      if (address) {
+        localStorage.removeItem(`pendingRole_${address}`);
+      }
+      console.log('Navigating to / (customer)');
+      navigate('/', { replace: true });
     }
   };
 

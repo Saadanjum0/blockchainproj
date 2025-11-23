@@ -150,13 +150,18 @@ function RegisterRestaurantForm({ onSuccess, onBack }) {
 
   useEffect(() => {
     if (isSuccess) {
+      // Clear pending role since registration is complete
+      if (address) {
+        localStorage.removeItem(`pendingRole_${address}`);
+      }
+      
       alert('Restaurant registered successfully! 🎉\n\nRefreshing your dashboard...');
       // Trigger parent component to refetch data
       setTimeout(() => {
         onSuccess();
       }, 2000);
     }
-  }, [isSuccess, onSuccess]);
+  }, [isSuccess, onSuccess, address]);
 
   return (
     <div className="max-w-2xl mx-auto">

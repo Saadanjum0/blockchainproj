@@ -58,8 +58,13 @@ function WelcomeScreen({ onSelectRole }) {
     },
   ];
 
-  const handleContinue = () => {
+  const handleContinue = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (selectedRole) {
+      console.log('Role selected:', selectedRole);
       onSelectRole(selectedRole);
     }
   };
@@ -138,7 +143,12 @@ function WelcomeScreen({ onSelectRole }) {
         {/* Continue Button */}
         <div className="text-center animate-fadeIn" style={{ animationDelay: '0.3s' }}>
           <button
-            onClick={handleContinue}
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleContinue();
+            }}
             disabled={!selectedRole}
             className={`
               relative inline-flex items-center gap-2 px-8 py-4 rounded-xl font-semibold text-lg
