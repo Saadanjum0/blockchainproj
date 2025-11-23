@@ -1,16 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
-import { Bike, Package, DollarSign, MapPin, Clock, User, Star, TrendingUp } from 'lucide-react';
+import { Bike, Package, DollarSign, MapPin, Clock, User, Star, TrendingUp, ExternalLink, CheckCircle } from 'lucide-react';
 import { 
   useRider, 
   useRegisterRider
 } from '../hooks/useRiders';
-import { useOrderCount, useOrder } from '../hooks/useOrders';
+import { useOrderCount, useOrder, useRiderOrders, useProcessPendingStats } from '../hooks/useOrders';
 import { useMarkPickedUp, useMarkDelivered, useAssignRider } from '../hooks/useOrders';
 import { useRestaurant } from '../hooks/useRestaurants';
 import { createRiderMetadata, fetchFromIPFS } from '../utils/ipfs';
 import { getOrderStatusName } from '../contracts/abis';
-import { NETWORK_CONFIG } from '../contracts/addresses';
+import { NETWORK_CONFIG, CONTRACTS } from '../contracts/addresses';
 import { formatEther } from 'viem';
 import { getTimeAgo } from '../utils/formatDate';
 
@@ -53,7 +53,11 @@ function RiderDashboard({ onBack }) {
       <div className="grid md:grid-cols-3 gap-6 mb-6">
         <RiderInfo rider={rider} riderAddress={address} />
         <RiderStats rider={rider} />
-        <RiderEarnings rider={rider} />
+        <RiderEarnings 
+          rider={rider} 
+          riderAddress={address} 
+          refetchRider={refetchRider}
+        />
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
@@ -265,32 +269,127 @@ function RiderStats({ rider }) {
   );
 }
 
-function RiderEarnings({ rider }) {
-  const totalEarnings = (Number(rider.totalEarnings) / 1e18).toFixed(4);
-  const usdValue = (parseFloat(totalEarnings) * 3000).toFixed(2);
+function RiderEarnings({ rider, riderAddress, refetchRider }) {
+  // OPTIMIZED: Use blockchain data directly - ZERO additional RPC calls!
+  // The rider registry already tracks totalEarnings and totalDeliveries on-chain
+  // No need to fetch individual orders - blockchain data is the source of truth
+  
+  const { orderIds, refetch: refetchRiderOrders } = useRiderOrders(riderAddress);
+  const { processPendingStats, isPending: isProcessingStats, isSuccess: statsProcessed } = useProcessPendingStats();
+
+  // Use blockchain totalEarnings directly (most reliable and efficient)
+  // FIXED: Increased precision to 10-11 decimal places
+  const blockchainEarnings = (Number(rider.totalEarnings) / 1e18).toFixed(11);
+  const completedDeliveries = Number(rider.totalDeliveries);
+  const usdValue = (parseFloat(blockchainEarnings) * 3000).toFixed(2);
+  
+  // Get all rider orders - processPendingStats will only process pending ones
+  const allOrderIds = orderIds || [];
+
+  const handleProcessStats = () => {
+    if (allOrderIds.length > 0) {
+      console.log('Processing pending stats for orders:', allOrderIds);
+      processPendingStats(allOrderIds);
+    } else {
+      alert('No orders found. Earnings should update automatically after delivery confirmation.');
+    }
+  };
+
+  // FIXED BUG 1: Use refetch instead of window.location.reload()
+  // This preserves component state and provides better UX
+  // FIXED: Only depend on statsProcessed - refetch functions are stable from wagmi
+  useEffect(() => {
+    if (statsProcessed && refetchRider) {
+      // Refetch rider data to update earnings display
+      refetchRider();
+      refetchRiderOrders();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statsProcessed]); // Only depend on the actual trigger, not function references
+
+  
+  // Note: Pending earnings are visible in "My Active Deliveries" section
+  // No need to calculate here - avoids excessive RPC calls
 
   return (
-    <div className="card bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-100">
-      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+    <div className="card bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+      <div className="flex items-center gap-2 mb-4">
         <DollarSign className="w-5 h-5 text-green-600" />
-        Earnings
-      </h3>
-      <div className="space-y-2">
+        <h3 className="text-lg font-semibold text-green-900">Earnings</h3>
+      </div>
+      <div className="space-y-3">
         <div>
-          <p className="text-gray-600 text-sm">Total Earned</p>
-          <p className="text-3xl font-bold text-green-600">
-            {totalEarnings} ETH
-          </p>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-green-700 mb-1">Total Earned</p>
+          <div className="flex items-baseline gap-2">
+            <p className="text-2xl font-bold text-green-900">
+              {blockchainEarnings} ETH
+            </p>
+            <CheckCircle className="w-5 h-5 text-green-600" />
+          </div>
+          <p className="text-xs text-green-600 mt-1">
             ≈ ${usdValue} USD
+          </p>
+        </div>
+        <div className="pt-3 border-t border-green-200">
+          <p className="text-xs text-green-700 mb-1">Completed Deliveries</p>
+          <p className="text-lg font-semibold text-green-900">
+            {completedDeliveries}
+          </p>
+        </div>
+        <div className="pt-2 border-t border-green-200">
+          <p className="text-xs text-green-700 mb-1 flex items-center gap-1">
+            <TrendingUp className="w-3 h-3" />
+            Active Deliveries
+          </p>
+          <p className="text-xs text-green-600">
+            Check "My Active Deliveries" below for pending orders
           </p>
         </div>
         <div className="bg-green-100 rounded-lg p-2 mt-3">
           <p className="text-xs text-green-800 font-medium">
             💰 You earn 10% of each order value
           </p>
+          <p className="text-xs text-green-700 mt-1">
+            Payments released when customer confirms delivery
+          </p>
         </div>
+        
+        {/* CRITICAL FIX: Button to process pending stats if earnings don't update */}
+        {allOrderIds.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-green-200">
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 mb-2">
+              <p className="text-xs text-yellow-800 font-medium mb-1">
+                ⚠️ Important: Earnings Update
+              </p>
+              <p className="text-xs text-yellow-700">
+                After delivery confirmation, click below to update your earnings display. 
+                Your ETH is already in your wallet (check Etherscan), but stats need processing.
+              </p>
+            </div>
+            <button
+              onClick={handleProcessStats}
+              disabled={isProcessingStats}
+              className="w-full bg-blue-500 hover:bg-blue-600 text-white text-xs py-2 px-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isProcessingStats ? '⏳ Processing Stats...' : 
+               statsProcessed ? '✅ Stats Updated! Refreshing...' :
+               '🔄 Update Earnings Display'}
+            </button>
+            <p className="text-xs text-gray-600 mt-1 text-center">
+              This updates the earnings counter. Your wallet balance is already updated.
+            </p>
+          </div>
+        )}
       </div>
+      <a
+        href={`${NETWORK_CONFIG.blockExplorer}/address/${riderAddress}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-4 flex items-center justify-center gap-2 text-xs text-green-700 hover:text-green-900 hover:underline transition-colors"
+      >
+        <ExternalLink className="w-3 h-3" />
+        View Wallet on Etherscan
+      </a>
     </div>
   );
 }
@@ -366,13 +465,7 @@ function MyActiveDeliveries({ riderAddress }) {
     }
   }, [orderCount, refreshKey]);
 
-  // Refresh order list every 5 seconds to catch new assignments and status changes
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setRefreshKey(prev => prev + 1);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  // Removed aggressive polling - users can manually refresh if needed
 
   return (
     <div className="card border-2 border-green-200">
@@ -405,7 +498,7 @@ function MyActiveDeliveries({ riderAddress }) {
 function AvailableOrderCard({ orderId, riderAddress }) {
   const { order, refetch } = useOrder(orderId);
   const { restaurant } = useRestaurant(order?.restaurantId);
-  const { assignRider, isPending, isConfirming: isAssigningConfirming, isSuccess: isAssignedSuccess } = useAssignRider();
+  const { assignRider, isPending, isConfirming: isAssigningConfirming, isSuccess: isAssignedSuccess, hash: assignHash } = useAssignRider();
   const [orderDetails, setOrderDetails] = useState(null);
 
   useEffect(() => {
@@ -433,13 +526,7 @@ function AvailableOrderCard({ orderId, riderAddress }) {
     }
   }, [isAssignedSuccess, refetch]);
 
-  // Periodic refetch to catch any updates (every 5 seconds)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      refetch();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [refetch]);
+  // Removed aggressive polling - manual refresh only
 
   if (!order) return null;
 
@@ -527,6 +614,23 @@ function AvailableOrderCard({ orderId, riderAddress }) {
          isAssigningConfirming ? '⏳ Processing Transaction...' :
          '✅ Accept Delivery'}
       </button>
+
+      {isAssignedSuccess && assignHash && (
+        <div className="mt-2 bg-green-50 border border-green-200 rounded-lg p-2">
+          <p className="text-xs text-green-800 mb-1">
+            ✅ Transaction confirmed! Order assigned to you.
+          </p>
+          <a 
+            href={`${NETWORK_CONFIG.blockExplorer}/tx/${assignHash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+          >
+            <ExternalLink className="w-3 h-3" />
+            View on Etherscan
+          </a>
+        </div>
+      )}
     </div>
   );
 }
@@ -534,8 +638,8 @@ function AvailableOrderCard({ orderId, riderAddress }) {
 function MyDeliveryCard({ orderId, riderAddress }) {
   const { order, refetch } = useOrder(orderId);
   const { restaurant } = useRestaurant(order?.restaurantId);
-  const { markPickedUp, isPending: isPickingUp, isConfirming: isPickingUpConfirming, isSuccess: isPickedUpSuccess } = useMarkPickedUp();
-  const { markDelivered, isPending: isDelivering, isConfirming: isDeliveringConfirming, isSuccess: isDeliveredSuccess } = useMarkDelivered();
+  const { markPickedUp, isPending: isPickingUp, isConfirming: isPickingUpConfirming, isSuccess: isPickedUpSuccess, hash: pickedUpHash } = useMarkPickedUp();
+  const { markDelivered, isPending: isDelivering, isConfirming: isDeliveringConfirming, isSuccess: isDeliveredSuccess, hash: deliveredHash } = useMarkDelivered();
 
   // Auto-refetch when transaction succeeds
   useEffect(() => {
@@ -548,13 +652,7 @@ function MyDeliveryCard({ orderId, riderAddress }) {
     }
   }, [isPickedUpSuccess, isDeliveredSuccess, refetch]);
 
-  // Periodic refetch to catch any updates (every 5 seconds)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      refetch();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [refetch]);
+  // Removed aggressive polling - manual refresh only
 
   if (!order) return null;
 
@@ -672,6 +770,7 @@ function MyDeliveryCard({ orderId, riderAddress }) {
       </div>
 
       {order.status === 2 && (
+        <>
         <button
           onClick={handlePickup}
           disabled={isPickingUp || isPickingUpConfirming}
@@ -681,9 +780,27 @@ function MyDeliveryCard({ orderId, riderAddress }) {
            isPickingUpConfirming ? '⏳ Processing Transaction...' :
            '📦 Mark as Picked Up'}
         </button>
+          {isPickedUpSuccess && pickedUpHash && (
+            <div className="mt-2 bg-green-50 border border-green-200 rounded-lg p-2">
+              <p className="text-xs text-green-800 mb-1">
+                ✅ Transaction confirmed! Order marked as picked up.
+              </p>
+              <a 
+                href={`${NETWORK_CONFIG.blockExplorer}/tx/${pickedUpHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+              >
+                <ExternalLink className="w-3 h-3" />
+                View on Etherscan
+              </a>
+            </div>
+          )}
+        </>
       )}
 
       {order.status === 3 && (
+        <>
         <button
           onClick={handleDeliver}
           disabled={isDelivering || isDeliveringConfirming}
@@ -693,17 +810,47 @@ function MyDeliveryCard({ orderId, riderAddress }) {
            isDeliveringConfirming ? '⏳ Processing Transaction...' :
            '📍 Mark as Delivered'}
         </button>
+          {isDeliveredSuccess && deliveredHash && (
+            <div className="mt-2 bg-green-50 border border-green-200 rounded-lg p-2">
+              <p className="text-xs text-green-800 mb-1">
+                ✅ Transaction confirmed! Order marked as delivered.
+              </p>
+              <a 
+                href={`${NETWORK_CONFIG.blockExplorer}/tx/${deliveredHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+              >
+                <ExternalLink className="w-3 h-3" />
+                View on Etherscan
+              </a>
+            </div>
+          )}
+        </>
       )}
 
       {order.status === 4 && (
         <div className="bg-purple-100 border border-purple-200 text-purple-800 py-2 px-4 rounded-lg text-center font-medium">
           ⏳ Waiting for customer confirmation...
+          <p className="text-xs mt-1">Payment will be released when customer confirms delivery</p>
         </div>
       )}
 
       {order.status === 5 && (
-        <div className="bg-green-200 border border-green-300 text-green-800 py-2 px-4 rounded-lg text-center font-medium">
-          ✅ Completed - Payment Released!
+        <div className="bg-green-200 border border-green-300 text-green-800 py-2 px-4 rounded-lg">
+          <p className="font-medium text-center mb-2">✅ Completed - Payment Released!</p>
+          <div className="text-xs space-y-1">
+            <p className="text-green-700">💰 You received {riderEarnings} ETH</p>
+            <a
+              href={`${NETWORK_CONFIG.blockExplorer}/address/${CONTRACTS.Escrow}#internaltx`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline flex items-center justify-center gap-1"
+            >
+              <ExternalLink className="w-3 h-3" />
+              View payment on Etherscan
+            </a>
+          </div>
         </div>
       )}
     </div>

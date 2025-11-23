@@ -581,6 +581,15 @@ export const ESCROW_ABI = [
     "type": "event"
   },
   {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "internalType": "uint256", "name": "orderId", "type": "uint256"},
+      {"indexed": true, "internalType": "address", "name": "rider", "type": "address"}
+    ],
+    "name": "RiderUpdated",
+    "type": "event"
+  },
+  {
     "inputs": [{"internalType": "uint256", "name": "_orderId", "type": "uint256"}],
     "name": "getPayment",
     "outputs": [
@@ -631,6 +640,23 @@ export const ESCROW_ABI = [
       {"internalType": "uint256", "name": "platformAmount", "type": "uint256"}
     ],
     "stateMutability": "pure",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "uint256", "name": "_orderId", "type": "uint256"},
+      {"internalType": "address", "name": "_rider", "type": "address"}
+    ],
+    "name": "updateRider",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "address", "name": "_orderManager", "type": "address"}],
+    "name": "setOrderManager",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   }
 ];

@@ -89,6 +89,33 @@ export function useRestaurantOrders(restaurantId) {
   };
 }
 
+// Hook to get rider orders
+export function useRiderOrders(riderAddress) {
+  const { data: orderIds, isLoading, error, refetch, isFetched } = useReadContract({
+    address: CONTRACTS.OrderManager,
+    abi: ORDER_MANAGER_ABI,
+    functionName: 'getRiderOrders',
+    args: [riderAddress],
+    enabled: !!riderAddress,
+    query: {
+      staleTime: 20000, // Cache for 20 seconds
+      gcTime: 1000 * 60, // Keep in cache for 60 seconds
+      refetchOnMount: true,
+      refetchOnReconnect: false,
+      refetchOnWindowFocus: false,
+      // Removed automatic polling - use manual refresh button instead
+    },
+  });
+
+  return {
+    orderIds: orderIds || [],
+    isLoading,
+    error,
+    refetch,
+    isFetched,
+  };
+}
+
 // Hook to create an order
 export function useCreateOrder() {
   const { writeContract, data: hash, error, isPending } = useWriteContract();
@@ -323,6 +350,38 @@ export function useConfirmDelivery() {
 
   return {
     confirmDelivery,
+    isPending,
+    isConfirming,
+    isSuccess,
+    error,
+    hash,
+  };
+}
+
+// Hook to process pending stats (updates rider/restaurant earnings)
+export function useProcessPendingStats() {
+  const { writeContract, data: hash, error, isPending } = useWriteContract();
+
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
+    hash,
+  });
+
+  const processPendingStats = (orderIds) => {
+    // Ensure orderIds is an array of BigInt
+    const orderIdsBigInt = orderIds.map(id => 
+      typeof id === 'string' ? BigInt(id) : id
+    );
+    
+    writeContract({
+      address: CONTRACTS.OrderManager,
+      abi: ORDER_MANAGER_ABI,
+      functionName: 'processPendingStats',
+      args: [orderIdsBigInt],
+    });
+  };
+
+  return {
+    processPendingStats,
     isPending,
     isConfirming,
     isSuccess,

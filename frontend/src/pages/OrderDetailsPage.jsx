@@ -2,9 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAccount } from 'wagmi';
 import { ArrowLeft, Package, User, MapPin, Phone, Clock, CheckCircle, DollarSign, ExternalLink } from 'lucide-react';
-import { useOrder } from '../hooks/useOrders';
+import { useOrder, useConfirmDelivery, useProcessPendingStats } from '../hooks/useOrders';
 import { useRestaurant } from '../hooks/useRestaurants';
-import { useConfirmDelivery } from '../hooks/useOrders';
 import { getOrderStatusName } from '../contracts/abis';
 import { formatEther } from 'viem';
 import { formatDateTime, getTimeAgo } from '../utils/formatDate';
@@ -24,6 +23,7 @@ function OrderDetailsPage() {
   const [riderRating, setRiderRating] = useState(0);
 
   const { confirmDelivery, isPending, isConfirming, isSuccess, hash } = useConfirmDelivery();
+  const { processPendingStats, isPending: isProcessingStats, isSuccess: statsProcessed } = useProcessPendingStats();
 
   // Fetch order details from IPFS
   useEffect(() => {
@@ -46,12 +46,35 @@ function OrderDetailsPage() {
     fetchDetails();
   }, [order]);
 
-  // Refresh after confirmation
+  // FIXED BUG 2: Automatically process pending stats after delivery confirmation
+  // Removed processPendingStats from dependency array - only isSuccess and orderId should trigger
+  // The function reference changes on every render, causing the effect to reset
   useEffect(() => {
-    if (isSuccess) {
-      setTimeout(() => refetch(), 2000);
+    if (isSuccess && orderId) {
+      // Wait a moment for the transaction to be fully confirmed, then process stats
+      const timer = setTimeout(() => {
+        console.log('Processing pending stats for order:', orderId);
+        processPendingStats([orderId]);
+      }, 3000); // Wait 3 seconds for blockchain state to update
+      
+      return () => clearTimeout(timer);
     }
-  }, [isSuccess, refetch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess, orderId]); // Only depend on isSuccess and orderId
+
+  // FIXED: Only refetch after stats are processed, not on delivery confirmation
+  // This prevents race condition where data is refetched before stats processing completes
+  useEffect(() => {
+    if (statsProcessed) {
+      // Wait a moment for stats processing to fully complete on-chain
+      const timer = setTimeout(() => {
+        console.log('Stats processed, refetching order data...');
+        refetch();
+      }, 2000); // Wait 2 seconds after stats processing to ensure on-chain state is updated
+      
+      return () => clearTimeout(timer);
+    }
+  }, [statsProcessed, refetch]);
 
   if (isLoading || !order) {
     return (

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Package, Clock, CheckCircle, ExternalLink } from 'lucide-react';
 import { useCustomerOrders, useOrder } from '../hooks/useOrders';
 import { getOrderStatusName } from '../contracts/abis';
-import { NETWORK_CONFIG } from '../contracts/addresses';
+import { NETWORK_CONFIG, CONTRACTS } from '../contracts/addresses';
 import { formatEther } from 'viem';
 import { formatDate, formatTime } from '../utils/formatDate';
 
@@ -118,9 +118,20 @@ function OrderCard({ orderId }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 text-xs text-gray-500 hover:text-blue-600 transition-colors">
-        <ExternalLink className="w-3 h-3" />
-        <span>View order details for Etherscan transaction links</span>
+      <div className="flex items-center justify-between pt-3 border-t">
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <ExternalLink className="w-3 h-3" />
+          <span>Click order for full details & Etherscan links</span>
+        </div>
+        <a
+          href={`${NETWORK_CONFIG.blockExplorer}/address/${order.customer}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 transition-colors"
+        >
+          <ExternalLink className="w-3 h-3" />
+          View Wallet
+        </a>
       </div>
 
       {order.status === 4 && (
@@ -128,6 +139,26 @@ function OrderCard({ orderId }) {
           <p className="text-orange-600 font-medium">
             👉 Click to confirm delivery and release payment
           </p>
+        </div>
+      )}
+
+      {order.status === 5 && (
+        <div className="mt-4 pt-4 border-t bg-green-50 rounded-lg p-3">
+          <p className="text-green-800 font-medium text-sm mb-2">
+            ✅ Order Completed - Payment Released
+          </p>
+          <div className="text-xs text-green-700 space-y-1">
+            <p>Payment distributed: Restaurant (80%), Rider (10%), Platform (10%)</p>
+            <a
+              href={`${NETWORK_CONFIG.blockExplorer}/address/${CONTRACTS.Escrow}#internaltx`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline flex items-center gap-1 mt-2"
+            >
+              <ExternalLink className="w-3 h-3" />
+              View payment distribution on Etherscan
+            </a>
+          </div>
         </div>
       )}
     </Link>

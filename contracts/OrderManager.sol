@@ -55,6 +55,7 @@ interface IEscrow {
     function deposit(uint256 _orderId, address _restaurant, address _rider) external payable;
     function release(uint256 _orderId) external;
     function refund(uint256 _orderId, address _customer) external;
+    function updateRider(uint256 _orderId, address _rider) external;
 }
 
 interface IRoleManager {
@@ -274,6 +275,9 @@ contract OrderManager is Ownable, ReentrancyGuard {
         
         order.rider = payable(_rider);
         riderOrderIds[_rider].push(_orderId);
+        
+        // CRITICAL FIX: Update escrow with rider address so payment can be released
+        escrow.updateRider(_orderId, _rider);
         
         // Update rider registry
         riderRegistry.assignToOrder(_rider, _orderId);

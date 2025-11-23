@@ -61,6 +61,7 @@ contract Escrow is Ownable, ReentrancyGuard {
     );
     
     event OrderManagerUpdated(address indexed newOrderManager);
+    event RiderUpdated(uint256 indexed orderId, address indexed rider);
 
     // ============================================
     // CONSTRUCTOR
@@ -77,6 +78,22 @@ contract Escrow is Ownable, ReentrancyGuard {
         require(_orderManager != address(0), "Invalid address");
         orderManager = _orderManager;
         emit OrderManagerUpdated(_orderManager);
+    }
+
+    // ============================================
+    // CRITICAL FIX: Update rider address when assigned
+    // ============================================
+    function updateRider(uint256 _orderId, address _rider) external nonReentrant {
+        require(msg.sender == orderManager, "Only OrderManager");
+        require(_rider != address(0), "Invalid rider address");
+        
+        Payment storage payment = payments[_orderId];
+        require(payment.totalAmount > 0, "No payment");
+        require(!payment.released && !payment.refunded, "Already processed");
+        require(payment.rider == address(0), "Rider already set");
+        
+        payment.rider = _rider;
+        emit RiderUpdated(_orderId, _rider);
     }
 
     // ============================================

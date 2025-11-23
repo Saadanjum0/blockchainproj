@@ -65,6 +65,15 @@ contract RestaurantRegistry is Ownable, ReentrancyGuard {
     }
 
     /**
+     * @dev Update OrderManager address (only owner can call this to change existing address)
+     */
+    function updateOrderManager(address _orderManager) external onlyOwner {
+        require(_orderManager != address(0), "Invalid address");
+        require(orderManager != address(0), "OrderManager not set yet");
+        orderManager = _orderManager;
+    }
+
+    /**
      * @dev Register new restaurant with role check
      */
     function registerRestaurant(
