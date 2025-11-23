@@ -118,27 +118,36 @@ function AppContent() {
     const pendingRole = localStorage.getItem(`pendingRole_${address}`);
     const savedRole = localStorage.getItem(`userRole_${address}`);
     
-    // Special handling for customer role - it's always valid (no on-chain registration)
-    if (savedRole === 'customer') {
-      // Customer role is valid, keep it
+    // PRIORITY 1: Check blockchain role FIRST (most authoritative)
+    if (role !== 'none') {
+      // Blockchain confirms a role - save it and clear pending
+      // This OVERRIDES any saved customer role (user upgraded to restaurant/rider)
+      localStorage.setItem(`userRole_${address}`, role);
+      localStorage.removeItem(`pendingRole_${address}`); // Clear pending since they're now registered
+      setStoredRole(role);
+      setSelectedRole(role);
+      return;
+    }
+    
+    // PRIORITY 2: If blockchain says 'none', check if customer role is saved
+    // Customer role is valid even when blockchain says 'none' (no on-chain registration)
+    if (savedRole === 'customer' && role === 'none') {
+      // Keep customer role only if blockchain hasn't assigned another role
       setStoredRole('customer');
       setSelectedRole('customer');
       return;
     }
     
-    if (role !== 'none') {
-      // Blockchain confirms a role - save it and clear pending
-      localStorage.setItem(`userRole_${address}`, role);
-      localStorage.removeItem(`pendingRole_${address}`); // Clear pending since they're now registered
-      setStoredRole(role);
-      setSelectedRole(role);
-    } else if (role === 'none' && !isLoading && storedRole && !pendingRole && storedRole !== 'customer') {
-      // Blockchain says no role, but we have stored role - clear it (contracts redeployed)
-      // BUT only if there's no pending registration AND it's not a customer role
-      console.log('Clearing stale role from localStorage - contracts may have been redeployed');
-      localStorage.removeItem(`userRole_${address}`);
-      setStoredRole(null);
-      setSelectedRole(null);
+    // PRIORITY 3: Clear stale roles if blockchain says 'none' and no pending registration
+    // CRITICAL: Only clear if we're CERTAIN the blockchain has no role (not just a timeout/slow RPC)
+    // Don't clear immediately - wait for multiple confirmations to avoid false positives
+    if (role === 'none' && !isLoading && storedRole && !pendingRole && storedRole !== 'customer') {
+      // Give the blockchain more time before clearing (avoid clearing due to temporary RPC issues)
+      // Only clear if role has been 'none' for a sustained period
+      console.log('Blockchain role is none but stored role exists:', storedRole);
+      // For now, keep the stored role - user can manually clear if needed
+      // This prevents accidentally clearing valid registrations due to RPC timeouts
+      // To manually clear: disconnect wallet and reconnect, or clear browser cache
     }
     // If pendingRole exists, keep storedRole even if blockchain says 'none' (user is registering)
   }, [address, role, isLoading, storedRole]);

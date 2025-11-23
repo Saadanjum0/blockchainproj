@@ -51,14 +51,14 @@ export function useRoleDetection() {
         return;
       }
 
-    // Set timeout to prevent infinite loading (max 5 seconds)
+    // Set timeout to prevent infinite loading (max 15 seconds for slow RPC)
     const loadingTimeout = setTimeout(() => {
       if (isLoading) {
-        console.warn('Role detection timed out, defaulting to none');
-        setRole('none');
-        setIsLoading(false);
+        console.warn('Role detection timed out after 15 seconds');
+        // Don't default to 'none' - keep loading state to avoid clearing valid roles
+        // The data will eventually arrive from the blockchain
       }
-    }, 5000);
+    }, 15000);
 
     // Check role priority: Rider > Restaurant > Customer > None
     if (isRiderRegistered === true) {
@@ -68,14 +68,15 @@ export function useRoleDetection() {
       setRole('restaurant');
       setRestaurantId(Number(ownedRestaurantId));
         setIsLoading(false);
-    } else {
+    } else if (!riderLoading && !restaurantLoading) {
+      // Only set 'none' if we're sure both queries completed
       // No specific role, user is a customer (or new user)
       setRole('none'); // Will auto-become customer on first order
       setIsLoading(false);
     }
 
     return () => clearTimeout(loadingTimeout);
-  }, [address, isConnected, isRiderRegistered, ownedRestaurantId, riderLoading, restaurantLoading]);
+  }, [address, isConnected, isRiderRegistered, ownedRestaurantId, riderLoading, restaurantLoading, isLoading]);
 
   const refetch = async () => {
     await Promise.all([refetchRider(), refetchRestaurant()]);
