@@ -14,6 +14,7 @@ import WelcomeScreen from './components/WelcomeScreen';
 import AnimatedBackground from './components/AnimatedBackground';
 import FloatingShapes from './components/FloatingShapes';
 import { useRoleDetection } from './hooks/useRoleDetection';
+import { CONTRACTS } from './contracts/addresses';
 
 function AppContent() {
   const navigate = useNavigate();
@@ -28,6 +29,40 @@ function AppContent() {
   
   // Check if on correct network (Sepolia = 11155111)
   const isCorrectNetwork = chainId === 11155111;
+
+  // CRITICAL FIX: Clear localStorage if contract addresses changed (redeployment)
+  useEffect(() => {
+    const CONTRACT_VERSION_KEY = 'contractVersion';
+    const CURRENT_VERSION = JSON.stringify({
+      RoleManager: CONTRACTS.RoleManager,
+      RestaurantRegistry: CONTRACTS.RestaurantRegistry,
+      RiderRegistry: CONTRACTS.RiderRegistry,
+      Escrow: CONTRACTS.Escrow,
+      OrderManager: CONTRACTS.OrderManager,
+    });
+
+    const storedVersion = localStorage.getItem(CONTRACT_VERSION_KEY);
+    
+    if (storedVersion !== CURRENT_VERSION) {
+      // Contracts were redeployed - clear all role data
+      console.log('Contract addresses changed - clearing all cached role data');
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('userRole_') || key.startsWith('pendingRole_'))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      
+      // Save new contract version
+      localStorage.setItem(CONTRACT_VERSION_KEY, CURRENT_VERSION);
+      
+      // Clear state
+      setStoredRole(null);
+      setSelectedRole(null);
+    }
+  }, []); // Run once on mount
 
   // Detect address changes and handle clean disconnection without UI glitches
   useEffect(() => {
@@ -71,22 +106,41 @@ function AppContent() {
   }, [address]);
 
   // Persist actual blockchain role once detected
+  // CRITICAL FIX: Clear localStorage if blockchain says 'none' but we have stored role
+  // This handles the case when contracts are redeployed and old roles are cached
   useEffect(() => {
-    if (address && role !== 'none') {
-      localStorage.setItem(`userRole_${address}`, role);
-      setStoredRole(role);
-      setSelectedRole(role);
+    if (address) {
+      if (role !== 'none') {
+        // Blockchain confirms a role - save it
+        localStorage.setItem(`userRole_${address}`, role);
+        setStoredRole(role);
+        setSelectedRole(role);
+      } else if (role === 'none' && !isLoading && storedRole) {
+        // Blockchain says no role, but we have stored role - clear it (contracts redeployed)
+        console.log('Clearing stale role from localStorage - contracts may have been redeployed');
+        localStorage.removeItem(`userRole_${address}`);
+        setStoredRole(null);
+        setSelectedRole(null);
+      }
     }
-  }, [address, role]);
+  }, [address, role, isLoading, storedRole]);
 
   // Show role selection only if wallet truly has no role and nothing stored
+  // CRITICAL FIX: Also show if role is 'none' even if storedRole exists (after clearing)
   useEffect(() => {
     if (isConnected && !isLoading && role === 'none' && !storedRole) {
+      setShowRoleSelection(true);
+    } else if (isConnected && !isLoading && role === 'none' && storedRole) {
+      // If we have stored role but blockchain says none, clear it and show selection
+      // This handles contract redeployment scenario
+      localStorage.removeItem(`userRole_${address}`);
+      setStoredRole(null);
+      setSelectedRole(null);
       setShowRoleSelection(true);
     } else {
       setShowRoleSelection(false);
     }
-  }, [isConnected, isLoading, role, storedRole]);
+  }, [isConnected, isLoading, role, storedRole, address]);
 
   const effectiveRole = role !== 'none' ? role : storedRole || 'none';
 
