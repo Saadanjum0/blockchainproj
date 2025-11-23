@@ -110,25 +110,27 @@ function AppContent() {
   // This handles the case when contracts are redeployed and old roles are cached
   // BUT: Don't clear if user has pendingRole (they're in the process of registering)
   useEffect(() => {
-    if (address) {
-      const pendingRole = localStorage.getItem(`pendingRole_${address}`);
-      
-      if (role !== 'none') {
-        // Blockchain confirms a role - save it and clear pending
-        localStorage.setItem(`userRole_${address}`, role);
-        localStorage.removeItem(`pendingRole_${address}`); // Clear pending since they're now registered
-        setStoredRole(role);
-        setSelectedRole(role);
-      } else if (role === 'none' && !isLoading && storedRole && !pendingRole) {
-        // Blockchain says no role, but we have stored role - clear it (contracts redeployed)
-        // BUT only if there's no pending registration
-        console.log('Clearing stale role from localStorage - contracts may have been redeployed');
-        localStorage.removeItem(`userRole_${address}`);
-        setStoredRole(null);
-        setSelectedRole(null);
-      }
-      // If pendingRole exists, keep storedRole even if blockchain says 'none' (user is registering)
+    if (!address) {
+      return; // Early return if no address
     }
+    
+    const pendingRole = localStorage.getItem(`pendingRole_${address}`);
+    
+    if (role !== 'none') {
+      // Blockchain confirms a role - save it and clear pending
+      localStorage.setItem(`userRole_${address}`, role);
+      localStorage.removeItem(`pendingRole_${address}`); // Clear pending since they're now registered
+      setStoredRole(role);
+      setSelectedRole(role);
+    } else if (role === 'none' && !isLoading && storedRole && !pendingRole) {
+      // Blockchain says no role, but we have stored role - clear it (contracts redeployed)
+      // BUT only if there's no pending registration
+      console.log('Clearing stale role from localStorage - contracts may have been redeployed');
+      localStorage.removeItem(`userRole_${address}`);
+      setStoredRole(null);
+      setSelectedRole(null);
+    }
+    // If pendingRole exists, keep storedRole even if blockchain says 'none' (user is registering)
   }, [address, role, isLoading, storedRole]);
 
   // Show role selection only if wallet truly has no role and nothing stored

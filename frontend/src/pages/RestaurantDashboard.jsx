@@ -101,6 +101,7 @@ function RestaurantDashboard({ onBack }) {
 }
 
 function RegisterRestaurantForm({ onSuccess, onBack }) {
+  const { address } = useAccount();
   const [formData, setFormData] = useState({
     name: '',
     description: '',

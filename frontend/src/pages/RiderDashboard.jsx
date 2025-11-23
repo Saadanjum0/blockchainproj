@@ -69,6 +69,7 @@ function RiderDashboard({ onBack }) {
 }
 
 function RegisterRiderForm({ onSuccess, onBack }) {
+  const { address } = useAccount();
   const [formData, setFormData] = useState({
     name: '',
     vehicleType: 'bike',
