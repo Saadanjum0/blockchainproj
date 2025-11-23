@@ -109,12 +109,22 @@ function AppContent() {
   // CRITICAL FIX: Clear localStorage if blockchain says 'none' but we have stored role
   // This handles the case when contracts are redeployed and old roles are cached
   // BUT: Don't clear if user has pendingRole (they're in the process of registering)
+  // SPECIAL CASE: Customer role is always valid (customers don't register on-chain)
   useEffect(() => {
     if (!address) {
       return; // Early return if no address
     }
     
     const pendingRole = localStorage.getItem(`pendingRole_${address}`);
+    const savedRole = localStorage.getItem(`userRole_${address}`);
+    
+    // Special handling for customer role - it's always valid (no on-chain registration)
+    if (savedRole === 'customer') {
+      // Customer role is valid, keep it
+      setStoredRole('customer');
+      setSelectedRole('customer');
+      return;
+    }
     
     if (role !== 'none') {
       // Blockchain confirms a role - save it and clear pending
@@ -122,9 +132,9 @@ function AppContent() {
       localStorage.removeItem(`pendingRole_${address}`); // Clear pending since they're now registered
       setStoredRole(role);
       setSelectedRole(role);
-    } else if (role === 'none' && !isLoading && storedRole && !pendingRole) {
+    } else if (role === 'none' && !isLoading && storedRole && !pendingRole && storedRole !== 'customer') {
       // Blockchain says no role, but we have stored role - clear it (contracts redeployed)
-      // BUT only if there's no pending registration
+      // BUT only if there's no pending registration AND it's not a customer role
       console.log('Clearing stale role from localStorage - contracts may have been redeployed');
       localStorage.removeItem(`userRole_${address}`);
       setStoredRole(null);
@@ -136,14 +146,26 @@ function AppContent() {
   // Show role selection only if wallet truly has no role and nothing stored
   // CRITICAL FIX: Don't show role selection if user just selected a role (pending registration)
   useEffect(() => {
+    // Early return if no address
+    if (!address) {
+      setShowRoleSelection(false);
+      return;
+    }
+    
     // If user just selected a role but hasn't registered yet, don't show selection again
-    const pendingRole = address ? localStorage.getItem(`pendingRole_${address}`) : null;
+    const pendingRole = localStorage.getItem(`pendingRole_${address}`);
+    const savedRole = localStorage.getItem(`userRole_${address}`);
+    
+    // Use savedRole from localStorage if storedRole is not set yet (happens on mount)
+    const effectiveStoredRole = storedRole || savedRole;
     
     console.log('Role selection check:', { 
       isConnected, 
       isLoading, 
       role, 
-      storedRole, 
+      storedRole,
+      savedRole,
+      effectiveStoredRole,
       pendingRole,
       address 
     });
@@ -152,13 +174,14 @@ function AppContent() {
     // 1. User has a blockchain role (already registered)
     // 2. User has a stored role (selected but not registered yet)
     // 3. User has a pending role (in process of registering)
-    if (role !== 'none' || storedRole || pendingRole) {
+    // 4. User has saved role in localStorage (including customer)
+    if (role !== 'none' || effectiveStoredRole || pendingRole) {
       setShowRoleSelection(false);
       return;
     }
     
     // Only show role selection if user truly has no role anywhere
-    if (isConnected && !isLoading && role === 'none' && !storedRole && !pendingRole) {
+    if (isConnected && !isLoading && role === 'none' && !effectiveStoredRole && !pendingRole) {
       console.log('Showing role selection screen');
       setShowRoleSelection(true);
     } else {
@@ -171,36 +194,36 @@ function AppContent() {
   const handleRoleSelection = (newRole) => {
     console.log('handleRoleSelection called:', newRole, 'for address:', address);
     
-    if (address) {
-      // Mark as pending registration (user selected role but hasn't registered yet)
-      localStorage.setItem(`pendingRole_${address}`, newRole);
-      // Also store the selected role
-      localStorage.setItem(`userRole_${address}`, newRole);
-      console.log('Saved to localStorage:', { pendingRole: newRole, userRole: newRole });
+    if (!address) {
+      console.error('No address available for role selection');
+      return;
     }
     
-    // Update state immediately
+    // Update state immediately BEFORE navigation
     setStoredRole(newRole);
     setSelectedRole(newRole);
     setShowRoleSelection(false);
     
-    console.log('State updated, navigating...');
-    
-    // Navigate to appropriate registration page using React Router
-    // Use immediate navigation (no setTimeout needed)
-    if (newRole === 'restaurant') {
-      console.log('Navigating to /restaurant-dashboard');
-      navigate('/restaurant-dashboard', { replace: true });
-    } else if (newRole === 'rider') {
-      console.log('Navigating to /rider-dashboard');
-      navigate('/rider-dashboard', { replace: true });
-    } else {
-      // Customer doesn't need registration, just go to home
-      if (address) {
-        localStorage.removeItem(`pendingRole_${address}`);
-      }
-      console.log('Navigating to / (customer)');
+    if (newRole === 'customer') {
+      // Customer doesn't need registration - just save role and navigate
+      localStorage.setItem(`userRole_${address}`, newRole);
+      localStorage.removeItem(`pendingRole_${address}`); // Clear any pending
+      console.log('Customer role saved, navigating to /');
       navigate('/', { replace: true });
+    } else {
+      // Restaurant and Rider need registration - mark as pending
+      localStorage.setItem(`pendingRole_${address}`, newRole);
+      localStorage.setItem(`userRole_${address}`, newRole);
+      console.log('Saved to localStorage:', { pendingRole: newRole, userRole: newRole });
+      
+      // Navigate to appropriate registration page
+      if (newRole === 'restaurant') {
+        console.log('Navigating to /restaurant-dashboard');
+        navigate('/restaurant-dashboard', { replace: true });
+      } else if (newRole === 'rider') {
+        console.log('Navigating to /rider-dashboard');
+        navigate('/rider-dashboard', { replace: true });
+      }
     }
   };
 
