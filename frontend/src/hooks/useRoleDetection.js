@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useAccount, useReadContract } from 'wagmi';
 import { CONTRACTS } from '../contracts/addresses';
-import { RESTAURANT_REGISTRY_ABI, RIDER_REGISTRY_ABI } from '../contracts/abis';
+import { RESTAURANT_REGISTRY_ABI, RIDER_REGISTRY_ABI, ROLE_MANAGER_ABI } from '../contracts/abis';
 
 /**
  * Hook to detect user's role in the system
  * Returns: role ('none', 'restaurant', 'rider', 'customer'), isLoading, refetch
  * Optimized with timeout to prevent infinite loading
+ * FIXED: Now checks blockchain for customer role (persists after cache clear)
  */
 export function useRoleDetection() {
   const { address, isConnected } = useAccount();
@@ -38,6 +39,19 @@ export function useRoleDetection() {
     },
   });
 
+  // FIXED ISSUE 1: Check customer role from blockchain (RoleManager)
+  // This ensures customer role persists after browser cache is cleared
+  const { data: isCustomer, isLoading: customerLoading, refetch: refetchCustomer } = useReadContract({
+    address: CONTRACTS.RoleManager,
+    abi: ROLE_MANAGER_ABI,
+    functionName: 'isCustomer',
+    args: [address],
+    enabled: !!address && isConnected,
+    query: {
+      staleTime: 10000, // Cache for 10 seconds
+    },
+  });
+
   useEffect(() => {
       if (!address || !isConnected) {
         setRole('none');
@@ -46,7 +60,7 @@ export function useRoleDetection() {
       }
 
     // Show loading only if actually fetching data
-    if (riderLoading || restaurantLoading) {
+    if (riderLoading || restaurantLoading || customerLoading) {
       setIsLoading(true);
         return;
       }
@@ -61,6 +75,7 @@ export function useRoleDetection() {
     }, 15000);
 
     // Check role priority: Rider > Restaurant > Customer > None
+    // FIXED: Now checks blockchain for customer role (persists after cache clear)
     if (isRiderRegistered === true) {
       setRole('rider');
       setIsLoading(false);
@@ -68,18 +83,23 @@ export function useRoleDetection() {
       setRole('restaurant');
       setRestaurantId(Number(ownedRestaurantId));
         setIsLoading(false);
-    } else if (!riderLoading && !restaurantLoading) {
-      // Only set 'none' if we're sure both queries completed
-      // No specific role, user is a customer (or new user)
-      setRole('none'); // Will auto-become customer on first order
+    } else if (isCustomer === true) {
+      // FIXED ISSUE 1: Customer role detected from blockchain
+      // This persists even after browser cache is cleared
+      setRole('customer');
+      setIsLoading(false);
+    } else if (!riderLoading && !restaurantLoading && !customerLoading) {
+      // Only set 'none' if we're sure all queries completed
+      // No specific role detected
+      setRole('none');
       setIsLoading(false);
     }
 
     return () => clearTimeout(loadingTimeout);
-  }, [address, isConnected, isRiderRegistered, ownedRestaurantId, riderLoading, restaurantLoading, isLoading]);
+  }, [address, isConnected, isRiderRegistered, ownedRestaurantId, isCustomer, riderLoading, restaurantLoading, customerLoading, isLoading]);
 
   const refetch = async () => {
-    await Promise.all([refetchRider(), refetchRestaurant()]);
+    await Promise.all([refetchRider(), refetchRestaurant(), refetchCustomer()]);
   };
 
   return {

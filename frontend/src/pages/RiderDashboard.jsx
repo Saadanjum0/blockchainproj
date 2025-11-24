@@ -52,7 +52,7 @@ function RiderDashboard({ onBack }) {
       
       <div className="grid md:grid-cols-3 gap-6 mb-6">
         <RiderInfo rider={rider} riderAddress={address} />
-        <RiderStats rider={rider} />
+        <RiderStats rider={rider} refetchRider={refetchRider} />
         <RiderEarnings 
           rider={rider} 
           riderAddress={address} 
@@ -282,7 +282,19 @@ function RiderInfo({ rider, riderAddress }) {
   );
 }
 
-function RiderStats({ rider }) {
+function RiderStats({ rider, refetchRider }) {
+  // FIXED ISSUE 2: Ensure component updates when rider data changes
+  // Add a small delay refetch to ensure data is fresh
+  useEffect(() => {
+    // Refetch on mount to ensure latest data
+    if (refetchRider) {
+      const timer = setTimeout(() => {
+        refetchRider();
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [refetchRider]);
+
   return (
     <div className="card bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-100">
       <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -293,7 +305,7 @@ function RiderStats({ rider }) {
         <div>
           <p className="text-gray-600 text-sm">Total Completed</p>
           <p className="text-3xl font-bold text-green-600">
-            {Number(rider.totalDeliveries)}
+            {Number(rider?.totalDeliveries || 0)}
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -331,14 +343,25 @@ function RiderEarnings({ rider, riderAddress, refetchRider }) {
     }
   };
 
-  // FIXED BUG 1: Use refetch instead of window.location.reload()
+  // FIXED ISSUE 2: Improved refetch logic to ensure earnings and deliveries update
   // This preserves component state and provides better UX
   // FIXED: Only depend on statsProcessed - refetch functions are stable from wagmi
   useEffect(() => {
     if (statsProcessed && refetchRider) {
-      // Refetch rider data to update earnings display
-      refetchRider();
-      refetchRiderOrders();
+      console.log('Stats processed, refetching rider data to update earnings...');
+      // Wait a moment for blockchain state to fully update, then refetch
+      const timer = setTimeout(async () => {
+        try {
+          // Refetch rider data to update earnings and deliveries display
+          await refetchRider();
+          await refetchRiderOrders();
+          console.log('✅ Rider data refetched - earnings and deliveries should be updated');
+        } catch (error) {
+          console.error('Error refetching rider data:', error);
+        }
+      }, 2000); // Wait 2 seconds after stats processing to ensure on-chain state is updated
+      
+      return () => clearTimeout(timer);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statsProcessed]); // Only depend on the actual trigger, not function references

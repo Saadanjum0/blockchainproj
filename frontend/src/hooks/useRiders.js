@@ -10,6 +10,12 @@ export function useRider(riderAddress) {
     functionName: 'getRider',
     args: [riderAddress],
     enabled: !!riderAddress,
+    query: {
+      staleTime: 5000, // Cache for 5 seconds (shorter for earnings updates)
+      gcTime: 30000, // Keep in cache for 30 seconds
+      refetchOnReconnect: true,
+      refetchOnWindowFocus: false, // Don't refetch on window focus (prevents constant refreshing)
+    },
   });
 
   // Convert tuple to struct-like object for frontend compatibility
