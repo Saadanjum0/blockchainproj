@@ -31,10 +31,19 @@ function OrderDetailsPage() {
       if (order?.ipfsOrderHash) {
         try {
           setLoadingDetails(true);
+          console.log('Fetching order details from IPFS:', order.ipfsOrderHash);
           const details = await fetchFromIPFS(order.ipfsOrderHash);
           setOrderDetails(details);
+          console.log('✅ Order details loaded successfully');
         } catch (error) {
-          console.error('Failed to fetch order details:', error);
+          console.error('❌ Failed to fetch order details:', error);
+          
+          // Log user-friendly error messages for debugging
+          if (error.message.includes('INVALID IPFS HASH') || error.message.includes('local_')) {
+            console.error('⚠️ Order data not accessible across devices - order was created with localStorage fallback');
+          } else if (error.message.includes('FAILED TO FETCH')) {
+            console.error('⚠️ Unable to load order details from IPFS - check internet connection');
+          }
         } finally {
           setLoadingDetails(false);
         }

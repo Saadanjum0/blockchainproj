@@ -8,7 +8,7 @@ import {
 import { useOrderCount, useOrder, useRiderOrders, useProcessPendingStats } from '../hooks/useOrders';
 import { useMarkPickedUp, useMarkDelivered, useAssignRider } from '../hooks/useOrders';
 import { useRestaurant } from '../hooks/useRestaurants';
-import { createRiderMetadata, fetchFromIPFS } from '../utils/ipfs';
+import { createRiderMetadata, fetchFromIPFS, isPinataConfigured } from '../utils/ipfs';
 import { getOrderStatusName } from '../contracts/abis';
 import { NETWORK_CONFIG, CONTRACTS } from '../contracts/addresses';
 import { formatEther } from 'viem';
@@ -81,20 +81,52 @@ function RegisterRiderForm({ onSuccess, onBack }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // Check if IPFS is configured
+    if (!isPinataConfigured()) {
+      alert(
+        '❌ IPFS NOT CONFIGURED\n\n' +
+        'This application requires IPFS (Pinata) to be configured.\n' +
+        'Please contact the site administrator to set up Pinata API credentials.\n\n' +
+        'Without IPFS, rider data cannot be stored and shared across devices.'
+      );
+      return;
+    }
+
     try {
+      console.log('Creating rider metadata for IPFS...');
+      
       // Create metadata hash
       const metadataHash = await createRiderMetadata(formData);
+      console.log('✅ Metadata uploaded to IPFS:', metadataHash);
 
       // Register rider - pass all required parameters
+      console.log('Registering rider on blockchain...');
       await registerRider(
         formData.name,
         formData.phoneNumber || '',
         formData.vehicleType,
         metadataHash
       );
+      console.log('✅ Rider registration transaction submitted');
     } catch (error) {
-      console.error('Registration failed:', error);
-      alert('Failed to register as rider. Please try again.');
+      console.error('❌ Registration failed:', error);
+      
+      // Provide user-friendly error messages
+      if (error.message.includes('IPFS NOT CONFIGURED') || error.message.includes('Pinata API')) {
+        alert(
+          '❌ IPFS Configuration Error\n\n' +
+          'Pinata API credentials are not configured.\n' +
+          'Please contact the administrator to set up IPFS properly.'
+        );
+      } else if (error.message.includes('Failed to upload')) {
+        alert(
+          '❌ Upload Failed\n\n' +
+          'Could not upload rider data to IPFS.\n' +
+          'Please check your internet connection and try again.'
+        );
+      } else {
+        alert(`❌ Registration failed:\n\n${error.message || 'Please try again.'}`);
+      }
     }
   };
 
@@ -509,10 +541,19 @@ function AvailableOrderCard({ orderId, riderAddress }) {
     const fetchDetails = async () => {
       if (order?.ipfsOrderHash) {
         try {
+          console.log('Fetching order details from IPFS:', order.ipfsOrderHash);
           const details = await fetchFromIPFS(order.ipfsOrderHash);
           setOrderDetails(details);
+          console.log('✅ Order details loaded successfully');
         } catch (error) {
-          console.error('Failed to fetch order details:', error);
+          console.error('❌ Failed to fetch order details:', error);
+          
+          // Provide user-friendly error messages
+          if (error.message.includes('INVALID IPFS HASH') || error.message.includes('local_')) {
+            console.error('Order data not accessible across devices - needs re-upload');
+          } else if (error.message.includes('FAILED TO FETCH')) {
+            console.error('Unable to load order details from IPFS - check internet connection');
+          }
         }
       }
     };
