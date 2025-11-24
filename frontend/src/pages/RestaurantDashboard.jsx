@@ -12,7 +12,7 @@ import {
 import { useOrderCount, useOrder, useRestaurantOrders } from '../hooks/useOrders';
 import { useAcceptOrder, useMarkPrepared, useAssignRider } from '../hooks/useOrders';
 import { useAvailableRiders } from '../hooks/useRiders';
-import { createRestaurantMetadata, createMenuData, fetchFromIPFS } from '../utils/ipfs';
+import { createRestaurantMetadata, createMenuData, fetchFromIPFS, isPinataConfigured } from '../utils/ipfs';
 import { getOrderStatusName, ESCROW_ABI } from '../contracts/abis';
 import { NETWORK_CONFIG, CONTRACTS } from '../contracts/addresses';
 import { formatDateTime, getTimeAgo } from '../utils/formatDate';
@@ -27,6 +27,7 @@ function RestaurantDashboard({ onBack }) {
     refetch: refetchId 
   } = useRestaurantIdByOwner(address);
   const { restaurant, isLoading: loadingRestaurant, refetch: refetchRestaurant } = useRestaurant(myRestaurantId);
+  const { orderIds: myRestaurantOrderIds = [] } = useRestaurantOrders(myRestaurantId);
 
   useEffect(() => {
     if (address) {
@@ -89,7 +90,7 @@ function RestaurantDashboard({ onBack }) {
       
       <div className="grid md:grid-cols-3 gap-6 mb-6">
         <RestaurantInfo restaurant={restaurant} restaurantId={myRestaurantId} />
-        <RestaurantStats restaurant={restaurant} />
+        <RestaurantStats restaurant={restaurant} totalOrders={myRestaurantOrderIds.length} />
         <RestaurantEarnings restaurantId={myRestaurantId} restaurantAddress={address} />
       </div>
 
@@ -128,14 +129,38 @@ function RegisterRestaurantForm({ onSuccess, onBack }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // Check if IPFS is configured
+    if (!isPinataConfigured()) {
+      alert(
+        '❌ IPFS NOT CONFIGURED\n\n' +
+        'This application requires IPFS (Pinata) to be configured.\n' +
+        'Please contact the site administrator to set up Pinata API credentials.\n\n' +
+        'Without IPFS, restaurant data cannot be stored and shared across devices.'
+      );
+      return;
+    }
+
     try {
+      console.log('Creating restaurant with IPFS...');
+      
       // Create menu hash
-      const menuHash = await createMenuData(menuItems.filter(item => item.name && item.price));
+      const validMenuItems = menuItems.filter(item => item.name && item.price);
+      if (validMenuItems.length === 0) {
+        alert('Please add at least one menu item with name and price');
+        return;
+      }
+      
+      console.log('Uploading menu to IPFS...', { itemCount: validMenuItems.length });
+      const menuHash = await createMenuData(validMenuItems);
+      console.log('✅ Menu uploaded:', menuHash);
       
       // Create metadata hash
+      console.log('Uploading metadata to IPFS...');
       const metadataHash = await createRestaurantMetadata(formData);
+      console.log('✅ Metadata uploaded:', metadataHash);
 
       // Register restaurant with all required parameters
+      console.log('Registering restaurant on blockchain...');
       await registerRestaurant(
         formData.name,
         formData.description || '',
@@ -143,9 +168,26 @@ function RegisterRestaurantForm({ onSuccess, onBack }) {
         metadataHash,
         formData.address || ''
       );
+      console.log('✅ Restaurant registration transaction submitted');
     } catch (error) {
-      console.error('Registration failed:', error);
-      alert('Failed to register restaurant. Please try again.');
+      console.error('❌ Registration failed:', error);
+      
+      // Provide user-friendly error messages
+      if (error.message.includes('IPFS NOT CONFIGURED') || error.message.includes('Pinata API')) {
+        alert(
+          '❌ IPFS Configuration Error\n\n' +
+          'Pinata API credentials are not configured.\n' +
+          'Please contact the administrator to set up IPFS properly.'
+        );
+      } else if (error.message.includes('Failed to upload')) {
+        alert(
+          '❌ Upload Failed\n\n' +
+          'Could not upload data to IPFS.\n' +
+          'Please check your internet connection and try again.'
+        );
+      } else {
+        alert(`❌ Registration failed:\n\n${error.message || 'Please try again.'}`);
+      }
     }
   };
 
@@ -383,14 +425,14 @@ function RestaurantInfo({ restaurant, restaurantId }) {
   );
 }
 
-function RestaurantStats({ restaurant }) {
+function RestaurantStats({ restaurant, totalOrders }) {
   return (
     <div className="card">
       <h3 className="text-lg font-semibold mb-4">Statistics</h3>
       <div className="grid grid-cols-2 gap-4">
         <div>
           <p className="text-gray-600 text-sm">Total Orders</p>
-          <p className="text-2xl font-bold">{Number(restaurant.totalOrders)}</p>
+          <p className="text-2xl font-bold">{totalOrders}</p>
         </div>
         <div>
           <p className="text-gray-600 text-sm">Reviews</p>
@@ -571,12 +613,31 @@ function MenuManager({ restaurantId, currentMenuHash }) {
       
       try {
         setLoading(true);
+        console.log('Fetching menu from IPFS:', currentMenuHash);
         const menuData = await fetchFromIPFS(currentMenuHash);
         if (menuData && menuData.items) {
           setMenuItems(menuData.items);
+          console.log('✅ Menu loaded successfully:', menuData.items.length, 'items');
         }
       } catch (error) {
-        console.error('Error loading menu:', error);
+        console.error('❌ Error loading menu:', error);
+        
+        // Provide user-friendly error messages
+        if (error.message.includes('INVALID IPFS HASH') || error.message.includes('local_')) {
+          alert(
+            '❌ Menu Not Accessible\n\n' +
+            'This menu was stored locally and is not accessible from other devices.\n' +
+            'Please re-save your menu to upload it to IPFS properly.'
+          );
+        } else if (error.message.includes('FAILED TO FETCH')) {
+          alert(
+            '❌ Unable to Load Menu\n\n' +
+            'Could not fetch menu from IPFS.\n' +
+            'Please check your internet connection and try again.'
+          );
+        } else {
+          alert(`❌ Failed to load menu:\n\n${error.message}`);
+        }
       } finally {
         setLoading(false);
       }
@@ -600,24 +661,56 @@ function MenuManager({ restaurantId, currentMenuHash }) {
   };
 
   const handleSaveMenu = async () => {
+    // Check if IPFS is configured
+    if (!isPinataConfigured()) {
+      alert(
+        '❌ IPFS NOT CONFIGURED\n\n' +
+        'This application requires IPFS (Pinata) to be configured.\n' +
+        'Please contact the site administrator to set up Pinata API credentials.\n\n' +
+        'Without IPFS, menu data cannot be stored and shared across devices.'
+      );
+      return;
+    }
+    
     try {
       // Filter out empty items
       const validItems = menuItems.filter(item => item.name && item.price);
       if (validItems.length === 0) {
-        alert('Please add at least one menu item');
+        alert('Please add at least one menu item with name and price');
         return;
       }
 
+      console.log('Uploading menu to IPFS...', { itemCount: validItems.length });
+      
       // Upload to IPFS
       const menuHash = await createMenuData(validItems);
+      console.log('✅ Menu uploaded to IPFS:', menuHash);
       
       // Update on blockchain
+      console.log('Updating menu hash on blockchain...');
       await updateMenu(restaurantId, menuHash);
       
       setIsEditing(false);
+      alert('✅ Menu updated successfully!\n\nYour menu is now accessible from all devices.');
     } catch (error) {
-      console.error('Failed to update menu:', error);
-      alert('Failed to update menu. Please try again.');
+      console.error('❌ Failed to update menu:', error);
+      
+      // Provide user-friendly error messages
+      if (error.message.includes('IPFS NOT CONFIGURED') || error.message.includes('Pinata API')) {
+        alert(
+          '❌ IPFS Configuration Error\n\n' +
+          'Pinata API credentials are not configured.\n' +
+          'Please contact the administrator to set up IPFS properly.'
+        );
+      } else if (error.message.includes('Failed to upload')) {
+        alert(
+          '❌ Upload Failed\n\n' +
+          'Could not upload menu to IPFS.\n' +
+          'Please check your internet connection and try again.'
+        );
+      } else {
+        alert(`❌ Failed to update menu:\n\n${error.message || 'Please try again.'}`);
+      }
     }
   };
 

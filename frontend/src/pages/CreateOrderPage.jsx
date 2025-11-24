@@ -4,7 +4,7 @@ import { useAccount } from 'wagmi';
 import { ShoppingCart, Plus, Minus, ArrowLeft } from 'lucide-react';
 import { useRestaurant } from '../hooks/useRestaurants';
 import { useCreateOrder } from '../hooks/useOrders';
-import { createOrderData, fetchFromIPFS } from '../utils/ipfs';
+import { createOrderData, fetchFromIPFS, isPinataConfigured } from '../utils/ipfs';
 import { NETWORK_CONFIG } from '../contracts/addresses';
 
 // Helper function to format ETH with proper decimal handling for small amounts
@@ -107,8 +107,16 @@ function CreateOrderPage() {
           setCart([]);
         }
       } catch (error) {
-        console.error('Error fetching menu from IPFS:', error);
-        setMenuError(`Unable to load restaurant menu: ${error.message || 'Unknown error'}. The restaurant may not have set up their menu yet.`);
+        console.error('❌ Error fetching menu from IPFS:', error);
+        
+        // Provide user-friendly error messages
+        if (error.message.includes('INVALID IPFS HASH') || error.message.includes('local_')) {
+          setMenuError('❌ This menu is not accessible across devices. Restaurant owner needs to re-upload the menu properly.');
+        } else if (error.message.includes('FAILED TO FETCH')) {
+          setMenuError('❌ Unable to load menu from IPFS. Please check your internet connection and try again.');
+        } else {
+          setMenuError(`❌ ${error.message || 'Unable to load restaurant menu. The restaurant may not have set up their menu yet.'}`);
+        }
         setCart([]);
       } finally {
         setMenuLoading(false);
@@ -173,7 +181,7 @@ function CreateOrderPage() {
 
       console.log('Uploading order data to IPFS...', orderDetails);
       const ipfsHash = await createOrderData(orderDetails);
-      console.log('IPFS hash received:', ipfsHash);
+      console.log('✅ IPFS hash received:', ipfsHash);
       
       // Validate amount is greater than 0 with proper precision
       // Don't truncate - use full precision for blockchain
@@ -204,10 +212,26 @@ function CreateOrderPage() {
       );
       console.log('Order creation transaction initiated');
     } catch (error) {
-      console.error('Order creation failed:', error);
+      console.error('❌ Order creation failed:', error);
       const errorMessage = error?.message || error?.shortMessage || error?.details || 'Unknown error';
       console.error('Full error object:', error);
-      alert(`Failed to create order: ${errorMessage}\n\nCheck browser console for details.`);
+      
+      // Provide user-friendly error messages
+      if (errorMessage.includes('IPFS NOT CONFIGURED') || errorMessage.includes('Pinata API')) {
+        alert(
+          '❌ IPFS Configuration Error\n\n' +
+          'This application requires IPFS (Pinata) to be configured.\n' +
+          'Please contact the site administrator to set up Pinata API credentials.'
+        );
+      } else if (errorMessage.includes('Failed to upload')) {
+        alert(
+          '❌ Upload Failed\n\n' +
+          'Could not upload order data to IPFS.\n' +
+          'Please check your internet connection and try again.'
+        );
+      } else {
+        alert(`❌ Failed to create order:\n\n${errorMessage}\n\nCheck browser console for details.`);
+      }
     }
   };
 
@@ -311,11 +335,9 @@ function CreateOrderPage() {
                   <strong>Hash:</strong> <code className="bg-gray-100 px-1 rounded">{restaurant?.ipfsMenuHash || 'N/A'}</code>
                 </p>
                 <p className="text-xs text-gray-500 mt-2">
-                  {restaurant?.ipfsMenuHash?.includes('DevelopmentHash') 
-                    ? 'This is a temporary placeholder. Restaurant needs to update menu.'
-                    : restaurant?.ipfsMenuHash?.startsWith('local_')
-                    ? 'Using localStorage (development mode without IPFS)'
-                    : 'IPFS data might not be available yet.'}
+                  {restaurant?.ipfsMenuHash?.includes('DevelopmentHash') || restaurant?.ipfsMenuHash?.startsWith('local_')
+                    ? '⚠️ This menu is not properly stored on IPFS. Restaurant needs to re-upload.'
+                    : 'Menu stored on IPFS (decentralized storage).'}
                 </p>
               </div>
             </details>

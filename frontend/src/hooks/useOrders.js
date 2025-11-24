@@ -372,11 +372,14 @@ export function useProcessPendingStats() {
       typeof id === 'string' ? BigInt(id) : id
     );
     
+    // Provide an explicit gas limit to prevent MetaMask massively over-estimating
+    // (similar to createOrder). This does NOT increase cost, it just caps the estimate.
     writeContract({
       address: CONTRACTS.OrderManager,
       abi: ORDER_MANAGER_ABI,
       functionName: 'processPendingStats',
       args: [orderIdsBigInt],
+      gas: 800000n,
     });
   };
 

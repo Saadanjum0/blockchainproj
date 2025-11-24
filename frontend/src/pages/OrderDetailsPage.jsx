@@ -15,7 +15,7 @@ function OrderDetailsPage() {
   const navigate = useNavigate();
   const { address } = useAccount();
   const { order, isLoading, refetch } = useOrder(orderId);
-  const { restaurant } = useRestaurant(order?.restaurantId);
+  const { restaurant, refetch: refetchRestaurant } = useRestaurant(order?.restaurantId);
   
   const [orderDetails, setOrderDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(true);
@@ -64,17 +64,21 @@ function OrderDetailsPage() {
 
   // FIXED: Only refetch after stats are processed, not on delivery confirmation
   // This prevents race condition where data is refetched before stats processing completes
+  // Also refetch restaurant data so RestaurantDashboard stats (totalOrders, ratings) update automatically
   useEffect(() => {
     if (statsProcessed) {
       // Wait a moment for stats processing to fully complete on-chain
       const timer = setTimeout(() => {
-        console.log('Stats processed, refetching order data...');
+        console.log('Stats processed, refetching order and restaurant data...');
         refetch();
+        if (refetchRestaurant) {
+          refetchRestaurant();
+        }
       }, 2000); // Wait 2 seconds after stats processing to ensure on-chain state is updated
       
       return () => clearTimeout(timer);
     }
-  }, [statsProcessed, refetch]);
+  }, [statsProcessed, refetch, refetchRestaurant]);
 
   if (isLoading || !order) {
     return (
