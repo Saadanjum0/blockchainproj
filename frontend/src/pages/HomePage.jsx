@@ -16,30 +16,33 @@ function HomePage() {
 
   return (
     <div className="animate-fadeIn">
-      <div className="mb-10 space-y-4">
+      <div className="mb-8">
         <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
           Live listings
         </span>
-        <h1 className="text-4xl md:text-5xl font-bold text-[#1A1A1A]">
-          Available Restaurants
-        </h1>
-        <div className="flex flex-wrap items-center gap-3 text-gray-600 text-base">
-          <p>Order with crypto on Sepolia — transparent fees, instant settlement.</p>
-          {typeof restaurantCount === 'number' && (
-            <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-sm font-semibold text-gray-700">
-              {restaurantCount} listing{restaurantCount === 1 ? '' : 's'}
-            </span>
-          )}
+        <div className="mt-4 flex flex-col gap-3">
+          <h1 className="text-4xl md:text-5xl font-bold text-[#111827]">
+            Available Restaurants
+          </h1>
+          <div className="flex flex-wrap items-center gap-3 text-gray-600 text-base">
+            <p>Order with crypto on Sepolia — transparent fees, instant settlement.</p>
+            {typeof restaurantCount === 'number' && (
+              <span className="inline-flex items-center rounded-full bg-slate-900 text-slate-50 px-3 py-1 text-xs font-semibold">
+                {restaurantCount} listing{restaurantCount === 1 ? '' : 's'}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
-      {isStillLoading ? (
-        <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading restaurants...</p>
-        </div>
-      ) : restaurantCount > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="rounded-3xl bg-white/95 border border-slate-200 shadow-[0_20px_60px_rgba(15,23,42,0.18)] p-5 md:p-7">
+        {isStillLoading ? (
+          <div className="text-center py-16">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading restaurants...</p>
+          </div>
+        ) : restaurantCount > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {Array.from({ length: restaurantCount }, (_, i) => (
             <RestaurantCard 
               key={i + 1} 
@@ -47,26 +50,27 @@ function HomePage() {
               isMyRestaurant={myRestaurantId === (i + 1)}
             />
           ))}
-        </div>
-      ) : (
-        <div className="text-center py-12 card">
-          <Store className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-          <h3 className="text-xl font-semibold mb-2">No restaurants yet</h3>
-          <p className="text-gray-600 mb-4">
-            {role === 'restaurant'
-              ? 'Be the first to register your restaurant on the blockchain!'
-              : 'Restaurants are registering now. Please check back soon.'}
-          </p>
-          {role === 'restaurant' && (
-            <Link 
-              to="/restaurant-dashboard" 
-              className="btn-primary inline-block"
-            >
-              Register Your Restaurant
-            </Link>
-          )}
-        </div>
-      )}
+          </div>
+        ) : (
+          <div className="text-center py-16">
+            <Store className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+            <h3 className="text-xl font-semibold mb-2">No restaurants yet</h3>
+            <p className="text-gray-600 mb-4">
+              {role === 'restaurant'
+                ? 'Be the first to register your restaurant on the blockchain!'
+                : 'Restaurants are registering now. Please check back soon.'}
+            </p>
+            {role === 'restaurant' && (
+              <Link 
+                to="/restaurant-dashboard" 
+                className="btn-primary inline-block"
+              >
+                Register Your Restaurant
+              </Link>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -74,6 +78,54 @@ function HomePage() {
 function RestaurantCard({ restaurantId, isMyRestaurant }) {
   const { restaurant, isLoading, error } = useRestaurant(restaurantId);
   const [coverUrl, setCoverUrl] = useState('');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadMetadata = async () => {
+      try {
+        if (!restaurant || !restaurant.metadataURI) {
+          if (isMounted) setCoverUrl('');
+          return;
+        }
+
+        // Support both raw IPFS hashes and full gateway URLs
+        let metadataSource = restaurant.metadataURI;
+        let metadataHash = metadataSource;
+        if (typeof metadataSource === 'string' && metadataSource.includes('://')) {
+          const ipfsIndex = metadataSource.indexOf('/ipfs/');
+          if (ipfsIndex !== -1) {
+            metadataHash = metadataSource.slice(ipfsIndex + 6);
+          } else {
+            metadataHash = metadataSource.split('/').pop();
+          }
+        }
+
+        const metadata = await fetchFromIPFS(metadataHash);
+        if (!isMounted) return;
+
+        if (metadata && metadata.image) {
+          const raw = metadata.image;
+          const url =
+            typeof raw === 'string' && raw.startsWith('http')
+              ? raw
+              : getIPFSUrl(raw);
+          setCoverUrl(url || '');
+        } else {
+          setCoverUrl('');
+        }
+      } catch (e) {
+        console.warn('Failed to load restaurant metadata for', restaurantId, e);
+        if (isMounted) setCoverUrl('');
+      }
+    };
+
+    loadMetadata();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [restaurant?.metadataURI, restaurantId]);
 
   if (isLoading) {
     return (
@@ -98,40 +150,6 @@ function RestaurantCard({ restaurantId, isMyRestaurant }) {
   const averageRating = restaurant.ratingCount > 0 
     ? (Number(restaurant.totalRating) / Number(restaurant.ratingCount)).toFixed(1)
     : '0.0';
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadMetadata = async () => {
-      try {
-        if (!restaurant.metadataURI) {
-          setCoverUrl('');
-          return;
-        }
-        const metadata = await fetchFromIPFS(restaurant.metadataURI);
-        if (!isMounted) return;
-
-        if (metadata && metadata.image) {
-          const raw = metadata.image;
-          const url = typeof raw === 'string' && raw.startsWith('http')
-            ? raw
-            : getIPFSUrl(raw);
-          setCoverUrl(url || '');
-        } else {
-          setCoverUrl('');
-        }
-      } catch (e) {
-        console.warn('Failed to load restaurant metadata for', restaurantId, e);
-        if (isMounted) setCoverUrl('');
-      }
-    };
-
-    loadMetadata();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [restaurant?.metadataURI, restaurantId]);
 
   return (
     <Link

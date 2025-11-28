@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAccount } from 'wagmi';
 import { ArrowLeft, Package, User, MapPin, Phone, Clock, CheckCircle, DollarSign, ExternalLink } from 'lucide-react';
-import { useOrder, useConfirmDelivery, useProcessPendingStats } from '../hooks/useOrders';
+import { useOrder, useConfirmDelivery } from '../hooks/useOrders';
 import { useRestaurant } from '../hooks/useRestaurants';
 import { getOrderStatusName } from '../contracts/abis';
 import { formatEther } from 'viem';
 import { formatDateTime, getTimeAgo } from '../utils/formatDate';
-import { fetchFromIPFS, getIPFSUrl } from '../utils/ipfs';
+import { fetchFromIPFS } from '../utils/ipfs';
 import { NETWORK_CONFIG, CONTRACTS } from '../contracts/addresses';
 
 function OrderDetailsPage() {
@@ -23,13 +23,6 @@ function OrderDetailsPage() {
   const [riderRating, setRiderRating] = useState(0);
 
   const { confirmDelivery, isPending, isConfirming, isSuccess, hash } = useConfirmDelivery();
-  const { processPendingStats, isPending: isProcessingStats, isSuccess: statsProcessed } = useProcessPendingStats();
-
-  const resolveMenuImage = (image) => {
-    if (!image || typeof image !== 'string') return '';
-    if (image.startsWith('http://') || image.startsWith('https://')) return image;
-    return getIPFSUrl(image);
-  };
 
   // Fetch order details from IPFS
   useEffect(() => {
@@ -61,39 +54,24 @@ function OrderDetailsPage() {
     fetchDetails();
   }, [order]);
 
-  // FIXED BUG 2: Automatically process pending stats after delivery confirmation
-  // Removed processPendingStats from dependency array - only isSuccess and orderId should trigger
-  // The function reference changes on every render, causing the effect to reset
+  // REMOVED AUTO-PROCESSING: Let riders manually sync earnings when ready for next delivery
+  // The automatic call was causing a second MetaMask transaction that would fail
+  // because it tried to update rider stats immediately, but riders should control when they sync
+  
+  // Refetch order data after successful confirmation
   useEffect(() => {
-    if (isSuccess && orderId) {
-      // Wait a moment for the transaction to be fully confirmed, then process stats
+    if (isSuccess) {
       const timer = setTimeout(() => {
-        console.log('Processing pending stats for order:', orderId);
-        processPendingStats([orderId]);
-      }, 3000); // Wait 3 seconds for blockchain state to update
-      
-      return () => clearTimeout(timer);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuccess, orderId]); // Only depend on isSuccess and orderId
-
-  // FIXED: Only refetch after stats are processed, not on delivery confirmation
-  // This prevents race condition where data is refetched before stats processing completes
-  // Also refetch restaurant data so RestaurantDashboard stats (totalOrders, ratings) update automatically
-  useEffect(() => {
-    if (statsProcessed) {
-      // Wait a moment for stats processing to fully complete on-chain
-      const timer = setTimeout(() => {
-        console.log('Stats processed, refetching order and restaurant data...');
+        console.log('Delivery confirmed, refetching order data...');
         refetch();
         if (refetchRestaurant) {
           refetchRestaurant();
         }
-      }, 2000); // Wait 2 seconds after stats processing to ensure on-chain state is updated
+      }, 2000);
       
       return () => clearTimeout(timer);
     }
-  }, [statsProcessed, refetch, refetchRestaurant]);
+  }, [isSuccess, refetch, refetchRestaurant]);
 
   if (isLoading || !order) {
     return (
@@ -132,7 +110,7 @@ function OrderDetailsPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto animate-fadeIn">
+    <div className="max-w-4xl mx-auto animate-fadeIn space-y-6">
       {/* Header */}
       <div className="mb-6">
         <button 
@@ -164,42 +142,25 @@ function OrderDetailsPage() {
               Order Items
             </h2>
             
-              {loadingDetails ? (
+            {loadingDetails ? (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto"></div>
                 <p className="mt-3 text-gray-600 text-sm">Loading items...</p>
               </div>
             ) : orderDetails?.items && orderDetails.items.length > 0 ? (
               <div className="space-y-3">
-                {orderDetails.items.map((item, index) => {
-                  const imgSrc = resolveMenuImage(item.image);
-                  return (
-                    <div
-                      key={index}
-                      className="flex justify-between items-center border-b pb-3 last:border-b-0"
-                    >
-                      <div className="flex items-center gap-3">
-                        {imgSrc ? (
-                          <div className="h-14 w-16 overflow-hidden rounded-xl border border-gray-100 bg-gray-50">
-                            <img
-                              src={imgSrc}
-                              alt={item.name}
-                              className="h-full w-full object-cover"
-                              loading="lazy"
-                            />
-                          </div>
-                        ) : (
-                          <span className="text-2xl">🍔</span>
-                        )}
-                        <div>
-                          <p className="font-medium">{item.name}</p>
-                          <p className="text-sm text-gray-600">Qty: {item.quantity}</p>
-                        </div>
+                {orderDetails.items.map((item, index) => (
+                  <div key={index} className="flex justify-between items-center border-b pb-3 last:border-b-0">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">🍔</span>
+                      <div>
+                        <p className="font-medium">{item.name}</p>
+                        <p className="text-sm text-gray-600">Qty: {item.quantity}</p>
                       </div>
-                      <p className="font-semibold">{item.price} ETH</p>
                     </div>
-                  );
-                })}
+                    <p className="font-semibold">{item.price} ETH</p>
+                  </div>
+                ))}
               </div>
             ) : (
               <p className="text-gray-600 text-center py-8">

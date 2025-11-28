@@ -14,7 +14,7 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #F7F8FA;
+  background-color: #E2E7F0;
   color: #1A1A1A;
 }
 
@@ -28,7 +28,7 @@ body {
   }
   
   .card {
-    @apply bg-white rounded-2xl shadow-[0_18px_50px_rgba(15,23,42,0.08)] p-6 border border-gray-100;
+    @apply bg-[#FFFBF5] rounded-2xl shadow-[0_18px_40px_rgba(15,23,42,0.16)] p-6 border border-orange-100;
   }
   
   .card-interactive {

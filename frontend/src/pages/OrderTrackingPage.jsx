@@ -119,7 +119,7 @@ function OrderTrackingPage() {
   const currentStep = order.status;
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-4xl mx-auto space-y-6">
       {/* Back Button */}
       <button 
         onClick={() => navigate('/my-orders')}

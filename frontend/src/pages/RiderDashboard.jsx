@@ -45,8 +45,8 @@ function RiderDashboard({ onBack }) {
   // If you're not on an active delivery, you can accept new orders
 
   return (
-    <div className="animate-fadeIn">
-      <h1 className="text-3xl font-bold mb-6 bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+    <div className="animate-fadeIn space-y-6">
+      <h1 className="text-3xl font-bold text-slate-900">
         🏍️ Rider Dashboard
       </h1>
       
@@ -403,8 +403,29 @@ function RiderEarnings({ rider, riderAddress, refetchRider }) {
       alert('No orders found. Deliveries must be completed before stats can update.');
       return;
     }
-    console.log('Processing pending stats for orders:', orderIds);
-    processPendingStats(orderIds);
+    
+    // Only process completed orders (status 5)
+    const completedOrders = [];
+    processedOrders.forEach((orderData) => {
+      if (orderData.status === 5) {
+        completedOrders.push(orderData.orderId);
+      }
+    });
+    
+    if (completedOrders.length === 0) {
+      alert('⚠️ No completed orders to sync.\n\n' +
+            'IMPORTANT: The customer must confirm delivery first!\n\n' +
+            'Current status:\n' +
+            '• Your delivery is marked as "Delivered"\n' +
+            '• Waiting for customer to click "Confirm Delivery"\n' +
+            '• Once confirmed, you can sync your earnings\n\n' +
+            '💡 TIP: You can accept new orders from a DIFFERENT restaurant right now!\n' +
+            'The system tracks each order separately.');
+      return;
+    }
+    
+    console.log('Processing pending stats for completed orders:', completedOrders);
+    processPendingStats(completedOrders);
   };
 
   useEffect(() => {
@@ -481,14 +502,14 @@ function RiderEarnings({ rider, riderAddress, refetchRider }) {
           </p>
         </div>
 
-        {orderIds.length > 0 && (
+        {orderIds.length > 0 && calculatedDeliveries > 0 && (
           <div className="mt-3 pt-3 border-t border-green-200">
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 mb-2">
-              <p className="text-xs text-yellow-800 font-medium mb-1">
-                ⚠️ Important: Earnings Sync
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 mb-2">
+              <p className="text-xs text-blue-800 font-medium mb-1">
+                📊 Earnings Sync
               </p>
-              <p className="text-xs text-yellow-700">
-                If totals look stale, click below to process pending stats. This updates your dashboard using completed orders.
+              <p className="text-xs text-blue-700">
+                Click below to sync your on-chain stats with completed deliveries. This updates your total deliveries counter and earnings on the blockchain.
               </p>
             </div>
             <button
@@ -498,10 +519,10 @@ function RiderEarnings({ rider, riderAddress, refetchRider }) {
             >
               {isProcessingStats ? '⏳ Processing Stats...' :
                statsProcessed ? '✅ Stats Updated! Refreshing...' :
-               '🔄 Sync Earnings'}
+               '🔄 Sync Earnings & Stats'}
             </button>
             <p className="text-xs text-gray-600 mt-1 text-center">
-              Your wallet already has released ETH. This button only refreshes dashboard counters.
+              💡 Payment is already in your wallet. This only updates dashboard counters.
             </p>
           </div>
         )}

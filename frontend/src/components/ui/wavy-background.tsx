@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createNoise3D } from "simplex-noise";
 
 const defaultWaveColors = [
@@ -41,7 +41,7 @@ export const WavyBackground: React.FC<WavyBackgroundProps> = ({
   fullScreen = true,
   ...props
 }) => {
-  const noise = useMemo(() => createNoise3D(), []);
+  const noise = createNoise3D();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationIdRef = useRef<number>();
   const [isSafari, setIsSafari] = useState(false);
@@ -56,7 +56,7 @@ export const WavyBackground: React.FC<WavyBackgroundProps> = ({
     }
   };
 
-  const waveColors = useMemo(() => colors ?? defaultWaveColors, [colors]);
+  const waveColors = colors ?? defaultWaveColors;
 
   useEffect(() => {
     const canvas = canvasRef.current;

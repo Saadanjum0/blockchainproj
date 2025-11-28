@@ -11,7 +11,6 @@ import RestaurantDashboard from './pages/RestaurantDashboard';
 import RiderDashboard from './pages/RiderDashboard';
 import MyOrders from './pages/MyOrders';
 import WelcomeScreen from './components/WelcomeScreen';
-import { WavyBackground } from './components/ui/wavy-background';
 import { useRoleDetection } from './hooks/useRoleDetection';
 import { CONTRACTS } from './contracts/addresses';
 
@@ -259,8 +258,8 @@ function AppContent() {
   };
 
   return (
-      <div className="min-h-screen bg-[#F7F8FA] text-[#1A1A1A]">
-        <header className="bg-white shadow-sm sticky top-0 z-50 border-b border-gray-100">
+      <div className="min-h-screen text-[#1A1A1A] bg-gradient-to-br from-[#FFF7ED] via-[#FFE4C7] to-[#E2E7F0]">
+        <header className="sticky top-0 z-50 border-b border-orange-200 bg-gradient-to-r from-[#FFEAD5] via-white to-[#FFF7ED]/90 backdrop-blur-md shadow-sm">
           <div className="max-w-7xl mx-auto px-4 py-4">
             <div className="flex items-center justify-between gap-4">
               <Link to="/" className="flex items-center gap-3">
@@ -419,23 +418,15 @@ function AppContent() {
           )}
           
           {!isConnected ? (
-            <div className="py-12">
-              <WavyBackground
-                fullScreen={false}
-                containerClassName="min-h-[520px] w-full rounded-[32px] border border-gray-200 bg-[#0F172A] px-6 py-16 text-white shadow-[0_40px_120px_rgba(15,23,42,0.35)]"
-                className="relative mx-auto flex w-full max-w-4xl flex-col items-center text-center space-y-6"
-                colors={['#FF6600', '#FF924A', '#FEC16B', '#FBBF24', '#38A169']}
-                backgroundFill="#0F172A"
-                waveOpacity={0.25}
-                waveWidth={60}
-              >
-                <span className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-4 py-2 text-sm font-medium text-white/80 backdrop-blur-md">
+            <section className="py-24">
+              <div className="max-w-3xl mx-auto text-center space-y-6">
+                <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600">
                   Live on Sepolia • Trustless payments
                 </span>
-                <h2 className="text-4xl md:text-6xl font-bold leading-tight tracking-tight">
+                <h2 className="text-5xl md:text-6xl font-bold leading-tight tracking-tight">
                   A cleaner way to run food delivery on-chain.
                 </h2>
-                <p className="text-lg md:text-xl text-white/80 leading-relaxed">
+                <p className="text-lg md:text-xl text-gray-600 leading-relaxed">
                   FoodChain lets customers, restaurants, and riders collaborate through escrow-backed smart
                   contracts. Simple, transparent, and ready for the next block.
                 </p>
@@ -448,7 +439,7 @@ function AppContent() {
                       <button
                         type="button"
                         onClick={openConnectModal}
-                        className="btn-primary text-lg px-10 py-5 rounded-2xl shadow-[0_20px_60px_rgba(255,102,0,0.45)]"
+                        className="btn-primary text-lg px-10 py-5 rounded-2xl"
                       >
                         Connect Wallet
                       </button>
@@ -456,43 +447,58 @@ function AppContent() {
                   }}
                 </ConnectButton.Custom>
 
-                <p className="text-sm text-white/60">MetaMask, Rainbow, Ledger — any wallet that works with RainbowKit.</p>
+                <p className="text-sm text-gray-500">MetaMask, Rainbow, Ledger — any wallet that works with RainbowKit.</p>
+              </div>
 
-                <div className="grid gap-6 pt-10 md:grid-cols-3 w-full">
-                  {[
-                    {
-                      icon: ShoppingBag,
-                      title: 'Order Food',
-                      description: 'Browse curated restaurants, pay in ETH, and follow order status in real time.',
-                      accent: 'from-orange-500/30 to-orange-600/40',
-                    },
-                    {
-                      icon: Store,
-                      title: 'Own a Restaurant',
-                      description: 'List your kitchen, publish menus, and settle disputes with escrow-backed protection.',
-                      accent: 'from-pink-500/30 to-orange-500/40',
-                    },
-                    {
-                      icon: Bike,
-                      title: 'Become a Rider',
-                      description: 'Accept deliveries, earn crypto instantly, and track payouts with block clarity.',
-                      accent: 'from-emerald-500/30 to-cyan-500/30',
-                    },
-                  ].map((item) => (
-                    <div
-                      key={item.title}
-                      className="rounded-2xl border border-white/10 bg-white/5 p-5 text-left shadow-lg backdrop-blur-xl"
-                    >
-                      <div className={`mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${item.accent}`}>
-                        <item.icon className="w-6 h-6 text-white" />
+              <div className="grid md:grid-cols-3 gap-6 mt-16">
+                {[
+                  {
+                    icon: ShoppingBag,
+                    title: 'Order Food',
+                    description: 'Browse curated restaurants, pay in ETH, and follow order status on-chain in real time.',
+                    iconBg: 'bg-blue-50',
+                    iconColor: 'text-blue-600',
+                    badgeClass: 'bg-blue-100 text-blue-600',
+                    badgeLabel: 'Customers',
+                  },
+                  {
+                    icon: Store,
+                    title: 'Own a Restaurant',
+                    description: 'List your kitchen, publish menus, and settle disputes with escrow-backed protection.',
+                    iconBg: 'bg-orange-50',
+                    iconColor: 'text-[#FF6600]',
+                    badgeClass: 'bg-orange-100 text-[#FF6600]',
+                    badgeLabel: 'Restaurants',
+                  },
+                  {
+                    icon: Bike,
+                    title: 'Become a Rider',
+                    description: 'Accept deliveries, earn crypto instantly, and track payouts with block-by-block clarity.',
+                    iconBg: 'bg-emerald-50',
+                    iconColor: 'text-[#38A169]',
+                    badgeClass: 'bg-emerald-100 text-[#1F7A4E]',
+                    badgeLabel: 'Riders',
+                  },
+                ].map((item, index) => (
+                  <div
+                    key={item.title}
+                    className="card h-full shadow-[0_18px_40px_rgba(15,23,42,0.08)] hover:-translate-y-1 hover:shadow-[0_26px_60px_rgba(15,23,42,0.12)] transition-all duration-300"
+                  >
+                    <div className="flex items-center justify-between mb-6">
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${item.iconBg}`}>
+                        <item.icon className={`w-6 h-6 ${item.iconColor}`} />
                       </div>
-                      <h3 className="text-xl font-semibold text-white">{item.title}</h3>
-                      <p className="mt-2 text-sm text-white/70">{item.description}</p>
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${item.badgeClass}`}>
+                        {item.badgeLabel}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              </WavyBackground>
-            </div>
+
+                    <h3 className="text-2xl font-semibold mb-3">{item.title}</h3>
+                    <p className="text-sm text-gray-600 leading-relaxed">{item.description}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
           ) : showRoleSelection ? (
             <WelcomeScreen onSelectRole={handleRoleSelection} />
           ) : isLoading ? (

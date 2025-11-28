@@ -12,7 +12,7 @@ import {
 import { useOrderCount, useOrder, useRestaurantOrders } from '../hooks/useOrders';
 import { useAcceptOrder, useMarkPrepared, useAssignRider } from '../hooks/useOrders';
 import { useAvailableRiders } from '../hooks/useRiders';
-import { createRestaurantMetadata, createMenuData, fetchFromIPFS, getIPFSUrl, isPinataConfigured } from '../utils/ipfs';
+import { createRestaurantMetadata, createMenuData, fetchFromIPFS, isPinataConfigured, uploadImageToIPFS } from '../utils/ipfs';
 import { getOrderStatusName, ESCROW_ABI } from '../contracts/abis';
 import { NETWORK_CONFIG, CONTRACTS } from '../contracts/addresses';
 import { formatDateTime, getTimeAgo } from '../utils/formatDate';
@@ -74,9 +74,9 @@ function RestaurantDashboard({ onBack }) {
   }
 
   return (
-    <div className="animate-fadeIn">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
+    <div className="animate-fadeIn space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold text-slate-900">
           My Restaurant Dashboard
         </h1>
         <Link 
@@ -88,7 +88,7 @@ function RestaurantDashboard({ onBack }) {
         </Link>
       </div>
       
-      <div className="grid md:grid-cols-3 gap-6 mb-6">
+      <div className="grid md:grid-cols-3 gap-6">
         <RestaurantInfo restaurant={restaurant} restaurantId={myRestaurantId} />
         <RestaurantStats restaurant={restaurant} totalOrders={myRestaurantOrderIds.length} />
         <RestaurantEarnings restaurantId={myRestaurantId} restaurantAddress={address} />
@@ -142,6 +142,14 @@ function RegisterRestaurantForm({ onSuccess, onBack }) {
 
     try {
       console.log('Creating restaurant with IPFS...');
+
+      // Prepare optional restaurant image
+      let imageHash = '';
+      if (restaurantImage) {
+        console.log('Uploading restaurant image to IPFS...');
+        imageHash = await uploadImageToIPFS(restaurantImage);
+        console.log('✅ Restaurant image uploaded:', imageHash);
+      }
       
       // Create menu hash
       const validMenuItems = menuItems.filter(item => item.name && item.price);
@@ -154,9 +162,12 @@ function RegisterRestaurantForm({ onSuccess, onBack }) {
       const menuHash = await createMenuData(validMenuItems);
       console.log('✅ Menu uploaded:', menuHash);
       
-      // Create metadata hash
+      // Create metadata hash (includes optional image hash)
       console.log('Uploading metadata to IPFS...');
-      const metadataHash = await createRestaurantMetadata(formData);
+      const metadataHash = await createRestaurantMetadata({
+        ...formData,
+        imageHash,
+      });
       console.log('✅ Metadata uploaded:', metadataHash);
 
       // Register restaurant with all required parameters
@@ -383,41 +394,6 @@ function RegisterRestaurantForm({ onSuccess, onBack }) {
 
 function RestaurantInfo({ restaurant, restaurantId }) {
   const { setStatus, isPending, isSuccess } = useSetRestaurantStatus();
-  const [imageUrl, setImageUrl] = useState('');
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadMetadata = async () => {
-      try {
-        if (!restaurant.metadataURI) {
-          setImageUrl('');
-          return;
-        }
-        const metadata = await fetchFromIPFS(restaurant.metadataURI);
-        if (!isMounted) return;
-
-        if (metadata && metadata.image) {
-          const raw = metadata.image;
-          const url = typeof raw === 'string' && (raw.startsWith('http://') || raw.startsWith('https://'))
-            ? raw
-            : getIPFSUrl(raw);
-          setImageUrl(url || '');
-        } else {
-          setImageUrl('');
-        }
-      } catch (e) {
-        console.warn('Failed to load restaurant metadata', e);
-        if (isMounted) setImageUrl('');
-      }
-    };
-
-    loadMetadata();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [restaurant?.metadataURI]);
 
   const toggleStatus = async () => {
     await setStatus(restaurantId, !restaurant.isActive);
@@ -426,15 +402,6 @@ function RestaurantInfo({ restaurant, restaurantId }) {
   return (
     <div className="card">
       <h3 className="text-lg font-semibold mb-4">Restaurant Info</h3>
-      {imageUrl && (
-        <div className="mb-4 overflow-hidden rounded-xl border border-gray-100 bg-gray-50">
-          <img
-            src={imageUrl}
-            alt={restaurant.name}
-            className="h-40 w-full object-cover"
-          />
-        </div>
-      )}
       <div className="space-y-3 text-sm">
         <div>
           <p className="text-gray-600">Restaurant ID</p>
@@ -950,7 +917,8 @@ function RestaurantOrderCard({ orderId, restaurantId, restaurantOwner, onUpdate 
   const { acceptOrder, isPending: isAccepting, isConfirming: isAcceptingConfirming, isSuccess: acceptSuccess, hash: acceptHash } = useAcceptOrder();
   const { markPrepared, isPending: isPreparing, isConfirming: isPreparingConfirming, isSuccess: preparedSuccess, hash: preparedHash } = useMarkPrepared();
   const { assignRider, isPending: isAssigning, isConfirming: isAssigningConfirming, isSuccess: assignSuccess, hash: assignHash } = useAssignRider();
-  const { riders } = useAvailableRiders();
+  const { riders, isLoading: loadingRiders } = useAvailableRiders();
+  const [selectedRider, setSelectedRider] = useState(null);
 
   // Refetch order when transaction is confirmed
   useEffect(() => {
@@ -1051,11 +1019,17 @@ function RestaurantOrderCard({ orderId, restaurantId, restaurantOwner, onUpdate 
   };
 
   const handleAssignRider = () => {
+    if (!selectedRider) {
+      alert('Please select a rider first');
+      return;
+    }
     if (riders.length === 0) {
       alert('No riders available');
       return;
     }
-    assignRider(orderId, riders[0]); // Assign first available rider
+    assignRider(orderId, selectedRider);
+    // Reset selection after assignment
+    setSelectedRider(null);
   };
 
   const amount = formatEther(order.amount);
@@ -1192,25 +1166,59 @@ function RestaurantOrderCard({ orderId, restaurantId, restaurantOwner, onUpdate 
                 🏍️ Ready for rider pickup
               </p>
               <p className="text-xs text-purple-600 mt-1">
-                {riders.length > 0 ? `${riders.length} riders available` : 'Waiting for rider...'}
+                {loadingRiders ? 'Loading riders...' : 
+                 riders.length > 0 ? `${riders.length} rider${riders.length > 1 ? 's' : ''} available` : 
+                 'No riders available - Riders can self-assign from their dashboard'}
               </p>
             </div>
-            {riders.length > 0 && (
-        <button
-          onClick={handleAssignRider}
-                disabled={isAssigning || isAssigningConfirming}
-                className="w-full btn-primary"
-        >
-                {isAssigning ? '⏳ Waiting for wallet...' : 
-                 isAssigningConfirming ? '⏳ Confirming transaction...' :
-                 assignSuccess ? '✅ Rider Assigned!' :
-                 '🏍️ Assign Rider'}
-        </button>
-      )}
+            {loadingRiders ? (
+              <div className="text-center py-2">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-600 mx-auto"></div>
+                <p className="text-xs text-gray-600 mt-1">Loading available riders...</p>
+              </div>
+            ) : riders.length > 0 ? (
+              <>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Select Rider to Assign:
+                  </label>
+                  <select
+                    value={selectedRider || ''}
+                    onChange={(e) => setSelectedRider(e.target.value)}
+                    className="w-full input-field"
+                    disabled={isAssigning || isAssigningConfirming || assignSuccess}
+                  >
+                    <option value="">-- Choose a rider --</option>
+                    {riders.map((riderAddress) => (
+                      <option key={riderAddress} value={riderAddress}>
+                        {riderAddress.slice(0, 6)}...{riderAddress.slice(-4)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={handleAssignRider}
+                  disabled={isAssigning || isAssigningConfirming || assignSuccess || !selectedRider}
+                  className="w-full btn-primary"
+                >
+                  {isAssigning ? '⏳ Waiting for wallet...' : 
+                   isAssigningConfirming ? '⏳ Confirming transaction...' :
+                   assignSuccess ? '✅ Rider Assigned!' :
+                   '🏍️ Assign Selected Rider'}
+                </button>
+              </>
+            ) : (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <p className="text-xs text-yellow-800">
+                  💡 <strong>Tip:</strong> Riders can accept this order directly from their dashboard. 
+                  You can also wait for a rider to become available.
+                </p>
+              </div>
+            )}
             {assignSuccess && assignHash && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-2 mt-2">
                 <p className="text-xs text-green-800 mb-1">
-                  ✅ Transaction confirmed! Updating order status...
+                  ✅ Transaction confirmed! Rider assigned successfully.
                 </p>
                 <a 
                   href={`${NETWORK_CONFIG.blockExplorer}/tx/${assignHash}`}
