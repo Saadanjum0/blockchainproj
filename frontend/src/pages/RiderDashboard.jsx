@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useAccount } from 'wagmi';
+import { useState, useEffect, useCallback } from 'react';
+import { useAccount, useBalance } from 'wagmi';
 import { Bike, Package, DollarSign, MapPin, Clock, User, Star, TrendingUp, ExternalLink, CheckCircle } from 'lucide-react';
 import { 
   useRider, 
@@ -318,60 +318,118 @@ function RiderStats({ rider, refetchRider }) {
 }
 
 function RiderEarnings({ rider, riderAddress, refetchRider }) {
-  // OPTIMIZED: Use blockchain data directly - ZERO additional RPC calls!
-  // The rider registry already tracks totalEarnings and totalDeliveries on-chain
-  // No need to fetch individual orders - blockchain data is the source of truth
-  
-  const { orderIds, refetch: refetchRiderOrders } = useRiderOrders(riderAddress);
+  const { orderIds = [], refetch: refetchRiderOrders, isFetched: riderOrdersFetched } = useRiderOrders(riderAddress);
   const { processPendingStats, isPending: isProcessingStats, isSuccess: statsProcessed } = useProcessPendingStats();
+  const { data: walletBalance } = useBalance({
+    address: riderAddress,
+    chainId: NETWORK_CONFIG.chainId,
+    watch: true,
+  });
 
-  // Use blockchain totalEarnings directly (most reliable and efficient)
-  // FIXED: Increased precision to 10-11 decimal places
-  const blockchainEarnings = (Number(rider.totalEarnings) / 1e18).toFixed(11);
-  const completedDeliveries = Number(rider.totalDeliveries);
-  const usdValue = (parseFloat(blockchainEarnings) * 3000).toFixed(2);
-  
-  // Get all rider orders - processPendingStats will only process pending ones
-  const allOrderIds = orderIds || [];
+  const [processedOrders, setProcessedOrders] = useState(new Map());
+  const [calculatedEarnings, setCalculatedEarnings] = useState(0);
+  const [calculatedDeliveries, setCalculatedDeliveries] = useState(0);
+  const [pendingEarnings, setPendingEarnings] = useState(0);
+
+  // Reset state when rider changes
+  useEffect(() => {
+    setProcessedOrders(new Map());
+    setCalculatedEarnings(0);
+    setCalculatedDeliveries(0);
+    setPendingEarnings(0);
+  }, [riderAddress]);
+
+  // Remove stale orders when rider orders change
+  useEffect(() => {
+    if (!riderOrdersFetched) return;
+    setProcessedOrders(prev => {
+      const ids = new Set(orderIds.map(id => Number(id)));
+      const next = new Map();
+      prev.forEach((value, key) => {
+        if (ids.has(key)) {
+          next.set(key, value);
+        }
+      });
+      return next;
+    });
+  }, [orderIds, riderOrdersFetched]);
+
+  const handleOrderProcessed = useCallback((orderData) => {
+    if (!orderData) return;
+    setProcessedOrders(prev => {
+      const next = new Map(prev);
+      next.set(orderData.orderId, orderData);
+      return next;
+    });
+  }, []);
+
+  // Recalculate earnings whenever processed order data changes
+  useEffect(() => {
+    if (processedOrders.size === 0) {
+      setCalculatedEarnings(0);
+      setCalculatedDeliveries(0);
+      setPendingEarnings(0);
+      return;
+    }
+    let completedTotal = 0;
+    let completedCount = 0;
+    let pendingTotal = 0;
+
+    processedOrders.forEach(({ status, riderShare }) => {
+      if (status === 5) {
+        completedTotal += riderShare;
+        completedCount++;
+      } else if (status >= 2 && status < 5) {
+        pendingTotal += riderShare;
+      }
+    });
+
+    setCalculatedEarnings(completedTotal);
+    setCalculatedDeliveries(completedCount);
+    setPendingEarnings(pendingTotal);
+  }, [processedOrders]);
+
+  const onChainEarnings = rider?.totalEarnings ? Number(rider.totalEarnings) / 1e18 : 0;
+  const displayEarnings = Math.max(onChainEarnings, calculatedEarnings);
+  const usdValue = (displayEarnings * 3000).toFixed(2);
+  const onChainDeliveries = Number(rider?.totalDeliveries || 0);
+  const displayDeliveries = Math.max(onChainDeliveries, calculatedDeliveries);
+
+  const walletBalanceValue = walletBalance ? parseFloat(walletBalance.formatted) : null;
+  const walletSymbol = walletBalance?.symbol || 'ETH';
 
   const handleProcessStats = () => {
-    if (allOrderIds.length > 0) {
-      console.log('Processing pending stats for orders:', allOrderIds);
-      processPendingStats(allOrderIds);
-    } else {
-      alert('No orders found. Earnings should update automatically after delivery confirmation.');
+    if (orderIds.length === 0) {
+      alert('No orders found. Deliveries must be completed before stats can update.');
+      return;
     }
+    console.log('Processing pending stats for orders:', orderIds);
+    processPendingStats(orderIds);
   };
 
-  // FIXED ISSUE 2: Improved refetch logic to ensure earnings and deliveries update
-  // This preserves component state and provides better UX
-  // FIXED: Only depend on statsProcessed - refetch functions are stable from wagmi
   useEffect(() => {
     if (statsProcessed && refetchRider) {
-      console.log('Stats processed, refetching rider data to update earnings...');
-      // Wait a moment for blockchain state to fully update, then refetch
       const timer = setTimeout(async () => {
         try {
-          // Refetch rider data to update earnings and deliveries display
           await refetchRider();
           await refetchRiderOrders();
-          console.log('✅ Rider data refetched - earnings and deliveries should be updated');
         } catch (error) {
           console.error('Error refetching rider data:', error);
         }
-      }, 2000); // Wait 2 seconds after stats processing to ensure on-chain state is updated
-      
+      }, 2000);
       return () => clearTimeout(timer);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statsProcessed]); // Only depend on the actual trigger, not function references
-
-  
-  // Note: Pending earnings are visible in "My Active Deliveries" section
-  // No need to calculate here - avoids excessive RPC calls
+  }, [statsProcessed, refetchRider, refetchRiderOrders]);
 
   return (
     <div className="card bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+      {riderOrdersFetched && orderIds.map(orderId => (
+        <RiderOrderStatsCalculator
+          key={orderId.toString()}
+          orderId={orderId}
+          onOrderProcessed={handleOrderProcessed}
+        />
+      ))}
       <div className="flex items-center gap-2 mb-4">
         <DollarSign className="w-5 h-5 text-green-600" />
         <h3 className="text-lg font-semibold text-green-900">Earnings</h3>
@@ -381,7 +439,7 @@ function RiderEarnings({ rider, riderAddress, refetchRider }) {
           <p className="text-sm text-green-700 mb-1">Total Earned</p>
           <div className="flex items-baseline gap-2">
             <p className="text-2xl font-bold text-green-900">
-              {blockchainEarnings} ETH
+              {displayEarnings.toFixed(4)} ETH
             </p>
             <CheckCircle className="w-5 h-5 text-green-600" />
           </div>
@@ -392,37 +450,45 @@ function RiderEarnings({ rider, riderAddress, refetchRider }) {
         <div className="pt-3 border-t border-green-200">
           <p className="text-xs text-green-700 mb-1">Completed Deliveries</p>
           <p className="text-lg font-semibold text-green-900">
-            {completedDeliveries}
+            {displayDeliveries}
           </p>
         </div>
-        <div className="pt-2 border-t border-green-200">
-          <p className="text-xs text-green-700 mb-1 flex items-center gap-1">
-            <TrendingUp className="w-3 h-3" />
-            Active Deliveries
-          </p>
-          <p className="text-xs text-green-600">
-            Check "My Active Deliveries" below for pending orders
-          </p>
-        </div>
+        {pendingEarnings > 0 && (
+          <div className="pt-2 border-t border-green-200">
+            <p className="text-xs text-green-700 mb-1 flex items-center gap-1">
+              <TrendingUp className="w-3 h-3" />
+              Pending Earnings
+            </p>
+            <p className="text-sm font-semibold text-green-800">
+              {pendingEarnings.toFixed(4)} ETH
+            </p>
+          </div>
+        )}
+        {walletBalanceValue !== null && (
+          <div className="pt-2 border-t border-green-200">
+            <p className="text-xs text-green-700 mb-1">Wallet Balance</p>
+            <p className="text-lg font-semibold text-green-900">
+              {walletBalanceValue.toFixed(4)} {walletSymbol}
+            </p>
+          </div>
+        )}
         <div className="bg-green-100 rounded-lg p-2 mt-3">
           <p className="text-xs text-green-800 font-medium">
             💰 You earn 10% of each order value
           </p>
           <p className="text-xs text-green-700 mt-1">
-            Payments released when customer confirms delivery
+            Payments release instantly once the customer confirms delivery
           </p>
         </div>
-        
-        {/* CRITICAL FIX: Button to process pending stats if earnings don't update */}
-        {allOrderIds.length > 0 && (
+
+        {orderIds.length > 0 && (
           <div className="mt-3 pt-3 border-t border-green-200">
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 mb-2">
               <p className="text-xs text-yellow-800 font-medium mb-1">
-                ⚠️ Important: Earnings Update
+                ⚠️ Important: Earnings Sync
               </p>
               <p className="text-xs text-yellow-700">
-                After delivery confirmation, click below to update your earnings display. 
-                Your ETH is already in your wallet (check Etherscan), but stats need processing.
+                If totals look stale, click below to process pending stats. This updates your dashboard using completed orders.
               </p>
             </div>
             <button
@@ -430,12 +496,12 @@ function RiderEarnings({ rider, riderAddress, refetchRider }) {
               disabled={isProcessingStats}
               className="w-full bg-blue-500 hover:bg-blue-600 text-white text-xs py-2 px-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isProcessingStats ? '⏳ Processing Stats...' : 
+              {isProcessingStats ? '⏳ Processing Stats...' :
                statsProcessed ? '✅ Stats Updated! Refreshing...' :
-               '🔄 Update Earnings Display'}
+               '🔄 Sync Earnings'}
             </button>
             <p className="text-xs text-gray-600 mt-1 text-center">
-              This updates the earnings counter. Your wallet balance is already updated.
+              Your wallet already has released ETH. This button only refreshes dashboard counters.
             </p>
           </div>
         )}
@@ -923,6 +989,26 @@ function MyDeliveryCard({ orderId, riderAddress }) {
       )}
     </div>
   );
+}
+
+function RiderOrderStatsCalculator({ orderId, onOrderProcessed }) {
+  const { order } = useOrder(orderId);
+
+  useEffect(() => {
+    if (!order || !order.amount) {
+      return;
+    }
+    const status = Number(order.status);
+    const amountEth = Number(formatEther(order.amount));
+    const riderShare = amountEth * 0.1;
+    onOrderProcessed({
+      orderId: Number(orderId),
+      status,
+      riderShare,
+    });
+  }, [order, orderId, onOrderProcessed]);
+
+  return null;
 }
 
 export default RiderDashboard;
