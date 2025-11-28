@@ -7,7 +7,7 @@ import { useRestaurant } from '../hooks/useRestaurants';
 import { getOrderStatusName } from '../contracts/abis';
 import { formatEther } from 'viem';
 import { formatDateTime, getTimeAgo } from '../utils/formatDate';
-import { fetchFromIPFS } from '../utils/ipfs';
+import { fetchFromIPFS, getIPFSUrl } from '../utils/ipfs';
 import { NETWORK_CONFIG, CONTRACTS } from '../contracts/addresses';
 
 function OrderDetailsPage() {
@@ -24,6 +24,12 @@ function OrderDetailsPage() {
 
   const { confirmDelivery, isPending, isConfirming, isSuccess, hash } = useConfirmDelivery();
   const { processPendingStats, isPending: isProcessingStats, isSuccess: statsProcessed } = useProcessPendingStats();
+
+  const resolveMenuImage = (image) => {
+    if (!image || typeof image !== 'string') return '';
+    if (image.startsWith('http://') || image.startsWith('https://')) return image;
+    return getIPFSUrl(image);
+  };
 
   // Fetch order details from IPFS
   useEffect(() => {
@@ -158,25 +164,42 @@ function OrderDetailsPage() {
               Order Items
             </h2>
             
-            {loadingDetails ? (
+              {loadingDetails ? (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto"></div>
                 <p className="mt-3 text-gray-600 text-sm">Loading items...</p>
               </div>
             ) : orderDetails?.items && orderDetails.items.length > 0 ? (
               <div className="space-y-3">
-                {orderDetails.items.map((item, index) => (
-                  <div key={index} className="flex justify-between items-center border-b pb-3 last:border-b-0">
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">🍔</span>
-                      <div>
-                        <p className="font-medium">{item.name}</p>
-                        <p className="text-sm text-gray-600">Qty: {item.quantity}</p>
+                {orderDetails.items.map((item, index) => {
+                  const imgSrc = resolveMenuImage(item.image);
+                  return (
+                    <div
+                      key={index}
+                      className="flex justify-between items-center border-b pb-3 last:border-b-0"
+                    >
+                      <div className="flex items-center gap-3">
+                        {imgSrc ? (
+                          <div className="h-14 w-16 overflow-hidden rounded-xl border border-gray-100 bg-gray-50">
+                            <img
+                              src={imgSrc}
+                              alt={item.name}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-2xl">🍔</span>
+                        )}
+                        <div>
+                          <p className="font-medium">{item.name}</p>
+                          <p className="text-sm text-gray-600">Qty: {item.quantity}</p>
+                        </div>
                       </div>
+                      <p className="font-semibold">{item.price} ETH</p>
                     </div>
-                    <p className="font-semibold">{item.price} ETH</p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-gray-600 text-center py-8">

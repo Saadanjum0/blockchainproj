@@ -12,7 +12,7 @@ import {
 import { useOrderCount, useOrder, useRestaurantOrders } from '../hooks/useOrders';
 import { useAcceptOrder, useMarkPrepared, useAssignRider } from '../hooks/useOrders';
 import { useAvailableRiders } from '../hooks/useRiders';
-import { createRestaurantMetadata, createMenuData, fetchFromIPFS, isPinataConfigured } from '../utils/ipfs';
+import { createRestaurantMetadata, createMenuData, fetchFromIPFS, getIPFSUrl, isPinataConfigured } from '../utils/ipfs';
 import { getOrderStatusName, ESCROW_ABI } from '../contracts/abis';
 import { NETWORK_CONFIG, CONTRACTS } from '../contracts/addresses';
 import { formatDateTime, getTimeAgo } from '../utils/formatDate';
@@ -383,6 +383,41 @@ function RegisterRestaurantForm({ onSuccess, onBack }) {
 
 function RestaurantInfo({ restaurant, restaurantId }) {
   const { setStatus, isPending, isSuccess } = useSetRestaurantStatus();
+  const [imageUrl, setImageUrl] = useState('');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadMetadata = async () => {
+      try {
+        if (!restaurant.metadataURI) {
+          setImageUrl('');
+          return;
+        }
+        const metadata = await fetchFromIPFS(restaurant.metadataURI);
+        if (!isMounted) return;
+
+        if (metadata && metadata.image) {
+          const raw = metadata.image;
+          const url = typeof raw === 'string' && (raw.startsWith('http://') || raw.startsWith('https://'))
+            ? raw
+            : getIPFSUrl(raw);
+          setImageUrl(url || '');
+        } else {
+          setImageUrl('');
+        }
+      } catch (e) {
+        console.warn('Failed to load restaurant metadata', e);
+        if (isMounted) setImageUrl('');
+      }
+    };
+
+    loadMetadata();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [restaurant?.metadataURI]);
 
   const toggleStatus = async () => {
     await setStatus(restaurantId, !restaurant.isActive);
@@ -391,6 +426,15 @@ function RestaurantInfo({ restaurant, restaurantId }) {
   return (
     <div className="card">
       <h3 className="text-lg font-semibold mb-4">Restaurant Info</h3>
+      {imageUrl && (
+        <div className="mb-4 overflow-hidden rounded-xl border border-gray-100 bg-gray-50">
+          <img
+            src={imageUrl}
+            alt={restaurant.name}
+            className="h-40 w-full object-cover"
+          />
+        </div>
+      )}
       <div className="space-y-3 text-sm">
         <div>
           <p className="text-gray-600">Restaurant ID</p>

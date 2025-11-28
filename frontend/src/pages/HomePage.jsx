@@ -1,9 +1,11 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAccount } from 'wagmi';
 import { Store, Star, Clock, Award } from 'lucide-react';
 import { useRestaurantCount, useRestaurant, useRestaurantIdByOwner } from '../hooks/useRestaurants';
 import { useRoleDetection } from '../hooks/useRoleDetection';
 import { formatDate } from '../utils/formatDate';
+import { fetchFromIPFS, getIPFSUrl } from '../utils/ipfs';
 
 function HomePage() {
   const { address } = useAccount();
@@ -71,6 +73,7 @@ function HomePage() {
 
 function RestaurantCard({ restaurantId, isMyRestaurant }) {
   const { restaurant, isLoading, error } = useRestaurant(restaurantId);
+  const [coverUrl, setCoverUrl] = useState('');
 
   if (isLoading) {
     return (
@@ -96,6 +99,40 @@ function RestaurantCard({ restaurantId, isMyRestaurant }) {
     ? (Number(restaurant.totalRating) / Number(restaurant.ratingCount)).toFixed(1)
     : '0.0';
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadMetadata = async () => {
+      try {
+        if (!restaurant.metadataURI) {
+          setCoverUrl('');
+          return;
+        }
+        const metadata = await fetchFromIPFS(restaurant.metadataURI);
+        if (!isMounted) return;
+
+        if (metadata && metadata.image) {
+          const raw = metadata.image;
+          const url = typeof raw === 'string' && raw.startsWith('http')
+            ? raw
+            : getIPFSUrl(raw);
+          setCoverUrl(url || '');
+        } else {
+          setCoverUrl('');
+        }
+      } catch (e) {
+        console.warn('Failed to load restaurant metadata for', restaurantId, e);
+        if (isMounted) setCoverUrl('');
+      }
+    };
+
+    loadMetadata();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [restaurant?.metadataURI, restaurantId]);
+
   return (
     <Link
       to={isMyRestaurant ? '/restaurant-dashboard' : `/order/${restaurantId}`}
@@ -105,6 +142,20 @@ function RestaurantCard({ restaurantId, isMyRestaurant }) {
         <div className="absolute top-4 right-4 z-20 inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1 text-xs font-bold text-white shadow">
           <Award className="w-3.5 h-3.5" />
           My Restaurant
+        </div>
+      )}
+
+      {coverUrl ? (
+        <div className="mb-3 overflow-hidden rounded-2xl border border-gray-100 bg-gray-50">
+          <img
+            src={coverUrl}
+            alt={restaurant.name || `Restaurant #${restaurantId}`}
+            className="h-40 w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+          />
+        </div>
+      ) : (
+        <div className="mb-3 flex h-40 w-full items-center justify-center rounded-2xl bg-orange-50 text-5xl">
+          🍕
         </div>
       )}
 

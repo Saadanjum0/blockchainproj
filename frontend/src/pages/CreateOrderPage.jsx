@@ -4,7 +4,7 @@ import { useAccount } from 'wagmi';
 import { ShoppingCart, Plus, Minus, ArrowLeft } from 'lucide-react';
 import { useRestaurant } from '../hooks/useRestaurants';
 import { useCreateOrder } from '../hooks/useOrders';
-import { createOrderData, fetchFromIPFS, isPinataConfigured } from '../utils/ipfs';
+import { createOrderData, fetchFromIPFS, getIPFSUrl, isPinataConfigured } from '../utils/ipfs';
 import { NETWORK_CONFIG } from '../contracts/addresses';
 
 // Helper function to format ETH with proper decimal handling for small amounts
@@ -53,6 +53,12 @@ function isAmountValid(amount) {
   return amount > 0.0000001;
 }
 
+function resolveMenuImage(image) {
+  if (!image || typeof image !== 'string') return '';
+  if (image.startsWith('http://') || image.startsWith('https://')) return image;
+  return getIPFSUrl(image);
+}
+
 function CreateOrderPage() {
   const { restaurantId } = useParams();
   const navigate = useNavigate();
@@ -89,12 +95,13 @@ function CreateOrderPage() {
         console.log('Menu data fetched:', menuData);
         
         if (menuData && menuData.items && Array.isArray(menuData.items) && menuData.items.length > 0) {
-          // Convert menu items to cart format
+          // Convert menu items to cart format and preserve optional image hash/url
           const cartItems = menuData.items.map((item, index) => ({
             id: index + 1,
             name: item.name || 'Unnamed Item',
             price: parseFloat(item.price) || 0,
             quantity: 0,
+            image: item.imageHash || item.image || item.imageUrl || '',
           }));
           
           console.log('Cart items created:', cartItems);
@@ -349,32 +356,50 @@ function CreateOrderPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {cart.map(item => (
-              <div key={item.id} className="flex items-center justify-between border-b pb-4 last:border-b-0 hover:bg-orange-50/30 px-3 -mx-3 rounded-lg transition-colors">
-                <div className="flex-1">
-                  <h3 className="font-medium text-lg">{item.name}</h3>
-                  <p className="text-orange-600 font-semibold">{formatEth(item.price)} ETH</p>
+            {cart.map(item => {
+              const imgSrc = resolveMenuImage(item.image);
+              return (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between border-b pb-4 last:border-b-0 hover:bg-orange-50/30 px-3 -mx-3 rounded-lg transition-colors"
+                >
+                  <div className="flex flex-1 items-center gap-4">
+                    {imgSrc && (
+                      <div className="h-16 w-20 overflow-hidden rounded-xl border border-gray-100 bg-gray-50 flex-shrink-0">
+                        <img
+                          src={imgSrc}
+                          alt={item.name}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      </div>
+                    )}
+                    <div>
+                      <h3 className="font-medium text-lg">{item.name}</h3>
+                      <p className="text-orange-600 font-semibold">{formatEth(item.price)} ETH</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => updateQuantity(item.id, -1)}
+                      className="p-2 rounded-full hover:bg-orange-100 transition-colors disabled:opacity-50"
+                      disabled={item.quantity === 0}
+                    >
+                      <Minus size={18} />
+                    </button>
+                    <span className="w-8 text-center font-semibold text-lg">
+                      {item.quantity}
+                    </span>
+                    <button
+                      onClick={() => updateQuantity(item.id, 1)}
+                      className="p-2 rounded-full hover:bg-orange-100 transition-colors"
+                    >
+                      <Plus size={18} />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => updateQuantity(item.id, -1)}
-                    className="p-2 rounded-full hover:bg-orange-100 transition-colors disabled:opacity-50"
-                    disabled={item.quantity === 0}
-                  >
-                    <Minus size={18} />
-                  </button>
-                  <span className="w-8 text-center font-semibold text-lg">
-                    {item.quantity}
-                  </span>
-                  <button
-                    onClick={() => updateQuantity(item.id, 1)}
-                    className="p-2 rounded-full hover:bg-orange-100 transition-colors"
-                  >
-                    <Plus size={18} />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
