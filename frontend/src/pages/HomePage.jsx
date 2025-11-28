@@ -3,7 +3,6 @@ import { useAccount } from 'wagmi';
 import { Store, Star, Clock, Award } from 'lucide-react';
 import { useRestaurantCount, useRestaurant, useRestaurantIdByOwner } from '../hooks/useRestaurants';
 import { useRoleDetection } from '../hooks/useRoleDetection';
-import { formatEther } from 'viem';
 import { formatDate } from '../utils/formatDate';
 
 function HomePage() {
@@ -15,13 +14,21 @@ function HomePage() {
 
   return (
     <div className="animate-fadeIn">
-      <div className="mb-8">
-        <h1 className="text-4xl md:text-5xl font-bold mb-3 bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
+      <div className="mb-10 space-y-4">
+        <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
+          Live listings
+        </span>
+        <h1 className="text-4xl md:text-5xl font-bold text-[#1A1A1A]">
           Available Restaurants
         </h1>
-        <p className="text-gray-600 text-lg">
-          Order food with cryptocurrency • Powered by blockchain on Sepolia testnet
-        </p>
+        <div className="flex flex-wrap items-center gap-3 text-gray-600 text-base">
+          <p>Order with crypto on Sepolia — transparent fees, instant settlement.</p>
+          {typeof restaurantCount === 'number' && (
+            <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-sm font-semibold text-gray-700">
+              {restaurantCount} listing{restaurantCount === 1 ? '' : 's'}
+            </span>
+          )}
+        </div>
       </div>
 
       {isStillLoading ? (
@@ -90,83 +97,76 @@ function RestaurantCard({ restaurantId, isMyRestaurant }) {
     : '0.0';
 
   return (
-    <Link 
+    <Link
       to={isMyRestaurant ? '/restaurant-dashboard' : `/order/${restaurantId}`}
-      className="card group overflow-hidden hover:shadow-lg transition-all duration-300 relative"
+      className="card group flex h-full flex-col gap-5 hover:-translate-y-1 hover:shadow-[0_26px_60px_rgba(15,23,42,0.12)] transition-all duration-300 relative"
     >
-      {/* "My Restaurant" Banner */}
       {isMyRestaurant && (
-        <div className="absolute top-3 right-3 z-20 bg-gradient-to-r from-blue-500 to-purple-600 text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-md flex items-center gap-1.5">
+        <div className="absolute top-4 right-4 z-20 inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1 text-xs font-bold text-white shadow">
           <Award className="w-3.5 h-3.5" />
-          MY RESTAURANT
+          My Restaurant
         </div>
       )}
-      
-      {/* Restaurant Image/Icon */}
-      <div className="h-40 bg-gradient-to-br from-orange-100 to-red-100 rounded-lg mb-4 flex items-center justify-center transition-all duration-300 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-t from-black/5 to-transparent" />
-        <span className="text-6xl relative z-10">🍕</span>
-      </div>
 
-      {/* Restaurant Info */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex-1 mr-2">
-            <h3 className="text-lg font-bold text-gray-900 group-hover:text-orange-600 transition-colors">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <h3 className="text-2xl font-semibold text-[#1A1A1A]">
               {restaurant.name || `Restaurant #${restaurantId}`}
             </h3>
-            {restaurant.description && (
-              <p className="text-xs text-gray-500 mt-1 line-clamp-1">{restaurant.description}</p>
-            )}
+            <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-3 py-1 text-xs font-semibold text-[#B45309]">
+              <Star className="w-3.5 h-3.5 fill-[#FBBF24] text-[#FBBF24]" />
+              {averageRating}
+            </span>
+            <span className="text-xs font-medium uppercase tracking-wide text-gray-400">
+              {Number(restaurant.ratingCount)} review{Number(restaurant.ratingCount) === 1 ? '' : 's'}
+            </span>
           </div>
-          {restaurant.isActive ? (
-            <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium flex items-center gap-1.5 flex-shrink-0">
-              <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
-              Open
-            </span>
-          ) : (
-            <span className="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs rounded-full font-medium flex-shrink-0">
-              Closed
-            </span>
+          {restaurant.description && (
+            <p className="text-sm text-gray-600">{restaurant.description}</p>
           )}
         </div>
+        <span
+          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
+            restaurant.isActive
+              ? 'bg-[#38A169] text-white shadow-sm'
+              : 'bg-gray-100 text-gray-500'
+          }`}
+        >
+          {restaurant.isActive ? 'Open' : 'Closed'}
+        </span>
+      </div>
 
-        <div className="space-y-2.5 text-sm text-gray-600">
-          <div className="flex items-center gap-2">
-            <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-            <span className="font-medium">
-              {averageRating} <span className="text-gray-500">({Number(restaurant.ratingCount)} reviews)</span>
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Store className="w-4 h-4 text-orange-600" />
-            <span>{Number(restaurant.totalOrders)} orders completed</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-gray-500" />
-            <span>
-              Joined {formatDate(restaurant.registeredAt)}
-            </span>
-          </div>
+      <div className="space-y-3 text-sm text-gray-600">
+        <div className="flex items-center gap-2 text-gray-500">
+          <Store className="w-4 h-4 text-gray-400" />
+          <span className="text-gray-500">
+            <span className="font-semibold text-gray-700">{Number(restaurant.totalOrders)}</span>{' '}
+            orders completed
+          </span>
         </div>
+        <div className="flex items-center gap-2 text-gray-500">
+          <Clock className="w-4 h-4 text-gray-400" />
+          <span>Joined {formatDate(restaurant.registeredAt)}</span>
+        </div>
+      </div>
 
-        {restaurant.physicalAddress && (
-          <div className="mt-3 pt-3 border-t">
-            <p className="text-xs text-gray-600">
-              📍 {restaurant.physicalAddress}
-            </p>
-          </div>
-        )}
+      {restaurant.physicalAddress && (
+        <div className="rounded-2xl bg-gray-50 p-4 text-sm text-gray-600">
+          <p className="font-semibold text-gray-500 uppercase tracking-wide text-xs mb-1">
+            Location
+          </p>
+          <p>{restaurant.physicalAddress}</p>
+        </div>
+      )}
 
-        {restaurant.isActive && (
-          <button className="w-full mt-4 btn-primary text-sm">
-            Order Now →
-          </button>
-        )}
-        {!restaurant.isActive && (
-          <button className="w-full mt-4 bg-gray-100 text-gray-500 px-4 py-2 rounded-lg font-medium cursor-not-allowed text-sm" disabled>
+      <div className="mt-auto">
+        {restaurant.isActive ? (
+          <span className="btn-primary w-full justify-center">Order Now</span>
+        ) : (
+          <span className="inline-flex w-full items-center justify-center rounded-xl bg-gray-100 px-4 py-3 text-sm font-semibold text-gray-400">
             Currently Closed
-          </button>
+          </span>
         )}
       </div>
     </Link>

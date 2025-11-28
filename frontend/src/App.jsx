@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount, useChainId } from 'wagmi';
-import { Store, Bike, ShoppingBag, Menu, X, Sparkles, AlertTriangle } from 'lucide-react';
+import { useAccount, useBalance, useChainId } from 'wagmi';
+import { Store, Bike, ShoppingBag, Menu, X, AlertTriangle, Wallet } from 'lucide-react';
 import HomePage from './pages/HomePage';
 import CreateOrderPage from './pages/CreateOrderPage';
 import OrderTrackingPage from './pages/OrderTrackingPage';
@@ -11,8 +11,6 @@ import RestaurantDashboard from './pages/RestaurantDashboard';
 import RiderDashboard from './pages/RiderDashboard';
 import MyOrders from './pages/MyOrders';
 import WelcomeScreen from './components/WelcomeScreen';
-import AnimatedBackground from './components/AnimatedBackground';
-import FloatingShapes from './components/FloatingShapes';
 import { useRoleDetection } from './hooks/useRoleDetection';
 import { CONTRACTS } from './contracts/addresses';
 
@@ -20,12 +18,25 @@ function AppContent() {
   const navigate = useNavigate();
   const { isConnected, address, status } = useAccount();
   const chainId = useChainId();
+  const { data: balanceData } = useBalance({
+    address,
+    chainId: chainId ?? 11155111,
+    enabled: Boolean(address),
+    watch: true,
+  });
   const { role, isLoading, refetch } = useRoleDetection();
   const [showRoleSelection, setShowRoleSelection] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [previousAddress, setPreviousAddress] = useState(null);
   const [selectedRole, setSelectedRole] = useState(null);
   const [storedRole, setStoredRole] = useState(null);
+  const formatAddress = (addr) => {
+    if (!addr) return '--';
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  };
+  const formattedBalance = balanceData?.formatted
+    ? `${parseFloat(balanceData.formatted).toFixed(4)}`
+    : '--';
   
   // Check if on correct network (Sepolia = 11155111)
   const isCorrectNetwork = chainId === 11155111;
@@ -247,61 +258,44 @@ function AppContent() {
   };
 
   return (
-      <div className="min-h-screen relative overflow-hidden">
-        {/* Animated Background Layers */}
-        <div className="fixed inset-0 bg-gradient-to-br from-orange-50 via-red-50/30 to-yellow-50/50 -z-10" />
-        <FloatingShapes />
-        <AnimatedBackground />
-        
-        {/* Gradient Mesh Overlay */}
-        <div className="fixed inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(249,115,22,0.1),transparent_50%),radial-gradient(circle_at_bottom_left,_rgba(220,38,38,0.1),transparent_50%)] -z-10" />
-        
-        {/* Header */}
-        <header className="bg-white/70 backdrop-blur-xl shadow-lg sticky top-0 z-50 border-b border-white/20">
+      <div className="min-h-screen bg-[#F7F8FA] text-[#1A1A1A]">
+        <header className="bg-white shadow-sm sticky top-0 z-50 border-b border-gray-100">
           <div className="max-w-7xl mx-auto px-4 py-4">
-            <div className="flex justify-between items-center">
-              {/* Logo */}
-              <Link to="/" className="flex items-center gap-3 group">
-                <div className="relative">
-                  <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center transform group-hover:scale-110 group-hover:rotate-12 transition-all duration-300 shadow-lg group-hover:shadow-orange-500/50">
-                    <span className="text-2xl animate-bounce-slow">🍕</span>
-                  </div>
-                  <Sparkles className="absolute -top-1 -right-1 w-4 h-4 text-yellow-400 animate-pulse" />
+            <div className="flex items-center justify-between gap-4">
+              <Link to="/" className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-[#FFF4EC] text-2xl flex items-center justify-center">
+                  🍕
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-600 via-red-600 to-pink-600 bg-clip-text text-transparent">
-                    FoodChain
-                  </h1>
-                  <span className="text-xs text-gray-600 font-medium">Decentralized Delivery</span>
+                  <p className="text-xl font-semibold">FoodChain</p>
+                  <p className="text-xs text-gray-500">Decentralized Delivery</p>
                 </div>
-            </Link>
-            
-              {/* Desktop Navigation */}
-              <nav className="hidden md:flex items-center gap-6">
+              </Link>
+
+              <nav className="hidden md:flex items-center gap-6 text-sm font-semibold">
                 {isConnected && !isLoading && (
-                <>
-                    {/* Show navigation based on role */}
-                    <Link 
-                      to="/" 
-                      className="flex items-center gap-2 text-gray-700 hover:text-orange-600 font-medium transition-colors"
+                  <>
+                    <Link
+                      to="/"
+                      className="flex items-center gap-2 text-gray-600 hover:text-[#FF6600] transition-colors"
                     >
                       <ShoppingBag className="w-4 h-4" />
                       Browse
                     </Link>
 
                     {(effectiveRole === 'customer' || effectiveRole === 'none') && (
-                      <Link 
-                        to="/my-orders" 
-                        className="text-gray-700 hover:text-orange-600 font-medium transition-colors"
+                      <Link
+                        to="/my-orders"
+                        className="text-gray-600 hover:text-[#FF6600] transition-colors"
                       >
                         My Orders
                       </Link>
                     )}
 
                     {effectiveRole === 'restaurant' && (
-                      <Link 
-                        to="/restaurant-dashboard" 
-                        className="flex items-center gap-2 text-orange-600 font-semibold"
+                      <Link
+                        to="/restaurant-dashboard"
+                        className="flex items-center gap-2 text-[#FF6600]"
                       >
                         <Store className="w-4 h-4" />
                         Dashboard
@@ -309,75 +303,97 @@ function AppContent() {
                     )}
 
                     {effectiveRole === 'rider' && (
-                        <Link 
-                        to="/rider-dashboard" 
-                        className="flex items-center gap-2 text-green-600 font-semibold"
-                        >
+                      <Link
+                        to="/rider-dashboard"
+                        className="flex items-center gap-2 text-[#38A169]"
+                      >
                         <Bike className="w-4 h-4" />
                         Dashboard
-                        </Link>
-                      )}
-                    </>
-                  )}
-
-                <ConnectButton />
-              </nav>
-
-              {/* Mobile Menu Button */}
-              <button 
-                className="md:hidden p-2"
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              >
-                {mobileMenuOpen ? <X /> : <Menu />}
-              </button>
-            </div>
-
-            {/* Mobile Navigation */}
-            {mobileMenuOpen && (
-              <div className="md:hidden mt-4 pb-4 space-y-3 border-t pt-4">
-                {isConnected && !isLoading && (
-                  <>
-                    <Link 
-                      to="/" 
-                      className="block text-gray-700 hover:text-orange-600 font-medium"
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      Browse Restaurants
-                    </Link>
-
-                    {(effectiveRole === 'customer' || effectiveRole === 'none') && (
-                    <Link 
-                        to="/my-orders" 
-                        className="block text-gray-700 hover:text-orange-600 font-medium"
-                        onClick={() => setMobileMenuOpen(false)}
-                    >
-                        My Orders
-                      </Link>
-                  )}
-
-                    {effectiveRole === 'restaurant' && (
-                      <Link 
-                        to="/restaurant-dashboard" 
-                        className="block text-orange-600 font-semibold"
-                        onClick={() => setMobileMenuOpen(false)}
-                      >
-                        Restaurant Dashboard
                       </Link>
                     )}
+                  </>
+                )}
+              </nav>
 
-                    {effectiveRole === 'rider' && (
-                      <Link 
-                        to="/rider-dashboard" 
-                        className="block text-green-600 font-semibold"
-                        onClick={() => setMobileMenuOpen(false)}
-                      >
-                        Rider Dashboard
-                      </Link>
-                  )}
-                </>
-              )}
+              <div className="flex items-center gap-3">
+                {isConnected && !isLoading && (
+                  <ConnectButton.Custom>
+                    {({ account, chain, mounted, openAccountModal }) => {
+                      if (!mounted || !account || !chain) {
+                        return null;
+                      }
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={openAccountModal}
+                          className="flex items-center gap-3 rounded-full border border-gray-200 bg-gray-50 px-3 py-2 text-left shadow-sm hover:border-[#FF6600] transition-all"
+                        >
+                          <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-[#FF6600] shadow-inner">
+                            <Wallet className="w-4 h-4" />
+                          </div>
+                          <div className="leading-tight">
+                            <p className="text-sm font-semibold text-[#1A1A1A]">
+                              {formattedBalance} ETH
+                            </p>
+                            <p className="text-xs text-gray-500">{formatAddress(account.address)}</p>
+                          </div>
+                        </button>
+                      );
+                    }}
+                  </ConnectButton.Custom>
+                )}
+
+                <button
+                  className="md:hidden p-2 rounded-lg border border-gray-200"
+                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                >
+                  {mobileMenuOpen ? <X /> : <Menu />}
+                </button>
               </div>
-              )}
+            </div>
+
+            {mobileMenuOpen && isConnected && !isLoading && (
+              <div className="md:hidden mt-4 pb-4 space-y-3 border-t pt-4">
+                <Link
+                  to="/"
+                  className="block text-gray-600 font-semibold"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Browse Restaurants
+                </Link>
+
+                {(effectiveRole === 'customer' || effectiveRole === 'none') && (
+                  <Link
+                    to="/my-orders"
+                    className="block text-gray-600 font-semibold"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    My Orders
+                  </Link>
+                )}
+
+                {effectiveRole === 'restaurant' && (
+                  <Link
+                    to="/restaurant-dashboard"
+                    className="block text-[#FF6600] font-semibold"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Restaurant Dashboard
+                  </Link>
+                )}
+
+                {effectiveRole === 'rider' && (
+                  <Link
+                    to="/rider-dashboard"
+                    className="block text-[#38A169] font-semibold"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Rider Dashboard
+                  </Link>
+                )}
+              </div>
+            )}
           </div>
         </header>
 
@@ -402,92 +418,87 @@ function AppContent() {
           )}
           
           {!isConnected ? (
-            <div className="text-center py-20 relative z-10">
-              {/* Hero Section with Animation */}
-              <div className="relative inline-block mb-8">
-                <div className="absolute inset-0 bg-gradient-to-br from-orange-500/20 to-red-600/20 blur-3xl animate-pulse-slow" />
-                <div className="relative inline-block p-8 bg-gradient-to-br from-orange-500 to-red-600 rounded-3xl shadow-2xl transform hover:scale-105 hover:rotate-6 transition-all duration-500 animate-glow">
-                  <span className="text-8xl drop-shadow-2xl">🍕</span>
-                </div>
-              </div>
-              
-              <h2 className="text-6xl md:text-7xl font-black mb-6 animate-fadeIn">
-                <span className="bg-gradient-to-r from-orange-600 via-red-600 to-pink-600 bg-clip-text text-transparent">
-                  Welcome to FoodChain
+            <section className="py-24">
+              <div className="max-w-3xl mx-auto text-center space-y-6">
+                <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600">
+                  Live on Sepolia • Trustless payments
                 </span>
-              </h2>
-              
-              <p className="text-gray-700 text-xl md:text-2xl mb-8 max-w-3xl mx-auto leading-relaxed animate-fadeIn" style={{ animationDelay: '0.2s' }}>
-                The first <span className="font-bold text-transparent bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text">decentralized</span> food delivery platform
-                <br />
-                <span className="text-lg text-gray-600">Powered by blockchain technology 🚀</span>
-              </p>
-              
-              <div className="flex justify-center mb-16 animate-fadeIn" style={{ animationDelay: '0.4s' }}>
-                <div className="relative">
-                  <div className="absolute inset-0 bg-gradient-to-r from-orange-500 to-red-600 blur-lg opacity-50 animate-pulse" />
-                  <ConnectButton />
-                </div>
+                <h2 className="text-5xl md:text-6xl font-bold leading-tight tracking-tight">
+                  A cleaner way to run food delivery on-chain.
+                </h2>
+                <p className="text-lg md:text-xl text-gray-600 leading-relaxed">
+                  FoodChain lets customers, restaurants, and riders collaborate through escrow-backed smart
+                  contracts. Simple, transparent, and ready for the next block.
+                </p>
+
+                <ConnectButton.Custom>
+                  {({ mounted, openConnectModal }) => {
+                    if (!mounted) return null;
+
+                    return (
+                      <button
+                        type="button"
+                        onClick={openConnectModal}
+                        className="btn-primary text-lg px-10 py-5 rounded-2xl"
+                      >
+                        Connect Wallet
+                      </button>
+                    );
+                  }}
+                </ConnectButton.Custom>
+
+                <p className="text-sm text-gray-500">MetaMask, Rainbow, Ledger — any wallet that works with RainbowKit.</p>
               </div>
-              
-              <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+
+              <div className="grid md:grid-cols-3 gap-6 mt-16">
                 {[
                   {
                     icon: ShoppingBag,
-                    gradient: 'from-blue-500 to-blue-600',
                     title: 'Order Food',
-                    description: 'Browse restaurants, place orders with crypto, track delivery in real-time',
-                    emoji: '🛒',
-                    delay: '0.6s'
+                    description: 'Browse curated restaurants, pay in ETH, and follow order status on-chain in real time.',
+                    iconBg: 'bg-blue-50',
+                    iconColor: 'text-blue-600',
+                    badgeClass: 'bg-blue-100 text-blue-600',
+                    badgeLabel: 'Customers',
                   },
                   {
                     icon: Store,
-                    gradient: 'from-orange-500 to-red-600',
                     title: 'Own a Restaurant',
-                    description: 'Register your restaurant, manage menu, accept orders on blockchain',
-                    emoji: '🏪',
-                    delay: '0.8s'
+                    description: 'List your kitchen, publish menus, and settle disputes with escrow-backed protection.',
+                    iconBg: 'bg-orange-50',
+                    iconColor: 'text-[#FF6600]',
+                    badgeClass: 'bg-orange-100 text-[#FF6600]',
+                    badgeLabel: 'Restaurants',
                   },
                   {
                     icon: Bike,
-                    gradient: 'from-green-500 to-emerald-600',
                     title: 'Become a Rider',
-                    description: 'Deliver food, earn crypto, work on your schedule',
-                    emoji: '🏍️',
-                    delay: '1s'
-                  }
+                    description: 'Accept deliveries, earn crypto instantly, and track payouts with block-by-block clarity.',
+                    iconBg: 'bg-emerald-50',
+                    iconColor: 'text-[#38A169]',
+                    badgeClass: 'bg-emerald-100 text-[#1F7A4E]',
+                    badgeLabel: 'Riders',
+                  },
                 ].map((item, index) => (
-                  <div 
-                    key={index}
-                    className="glass-card group hover:scale-105 transition-all duration-500 cursor-pointer relative overflow-hidden animate-fadeIn"
-                    style={{ animationDelay: item.delay }}
+                  <div
+                    key={item.title}
+                    className="card h-full shadow-[0_18px_40px_rgba(15,23,42,0.08)] hover:-translate-y-1 hover:shadow-[0_26px_60px_rgba(15,23,42,0.12)] transition-all duration-300"
                   >
-                    {/* Hover gradient effect */}
-                    <div className={`absolute inset-0 bg-gradient-to-br ${item.gradient} opacity-0 group-hover:opacity-10 transition-opacity duration-500`} />
-                    
-                    {/* Icon with animation */}
-                    <div className="relative">
-                      <div className={`w-20 h-20 bg-gradient-to-br ${item.gradient} rounded-2xl flex items-center justify-center mx-auto mb-4 transform group-hover:scale-110 group-hover:rotate-12 transition-all duration-500 shadow-xl`}>
-                        <item.icon className="w-10 h-10 text-white" />
+                    <div className="flex items-center justify-between mb-6">
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${item.iconBg}`}>
+                        <item.icon className={`w-6 h-6 ${item.iconColor}`} />
                       </div>
-                      <div className="absolute -top-2 -right-2 text-3xl opacity-0 group-hover:opacity-100 transition-all duration-300 animate-bounce-slow">
-                        {item.emoji}
-                      </div>
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${item.badgeClass}`}>
+                        {item.badgeLabel}
+                      </span>
                     </div>
-                    
-                    <h3 className="font-bold text-xl mb-3 group-hover:text-transparent group-hover:bg-gradient-to-r group-hover:from-orange-600 group-hover:to-red-600 group-hover:bg-clip-text transition-all duration-300">
-                      {item.title}
-                    </h3>
-                    <p className="text-sm text-gray-600 leading-relaxed">
-                      {item.description}
-                    </p>
-                    
-                    {/* Decorative corner */}
-                    <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-orange-500/10 to-transparent rounded-bl-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
+                    <h3 className="text-2xl font-semibold mb-3">{item.title}</h3>
+                    <p className="text-sm text-gray-600 leading-relaxed">{item.description}</p>
                   </div>
                 ))}
               </div>
-            </div>
+            </section>
           ) : showRoleSelection ? (
             <WelcomeScreen onSelectRole={handleRoleSelection} />
           ) : isLoading ? (
